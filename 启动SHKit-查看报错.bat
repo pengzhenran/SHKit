@@ -4,28 +4,40 @@ rem  SHKit GUI launcher, WITH console.
 rem  Use this one when the GUI does not start: it keeps the window open
 rem  and prints the traceback.
 rem
-rem  Keep the lines above the `chcp` call ASCII-only: cmd.exe parses a
-rem  .bat file in the OEM code page until `chcp 65001` takes effect.
+rem  Keep this file ASCII-only: cmd.exe reads .bat in the OEM code page
+rem  (GBK on a Chinese Windows) and would mis-parse UTF-8 Chinese here.
+rem  Interpreter lookup order: SHKIT_PYTHON, Anaconda under %USERPROFILE%,
+rem  the py launcher, then python on PATH.
 rem ===================================================================
-chcp 65001 >nul
 setlocal
 pushd "%~dp0"
 
-set "PY=C:\Users\pengzhenran\anaconda3\python.exe"
-if not exist "%PY%" set "PY=python"
+set "PY="
+if defined SHKIT_PYTHON if exist "%SHKIT_PYTHON%" set "PY=%SHKIT_PYTHON%"
+if not defined PY if exist "%USERPROFILE%\anaconda3\python.exe" set "PY=%USERPROFILE%\anaconda3\python.exe"
+if not defined PY if exist "%USERPROFILE%\miniconda3\python.exe" set "PY=%USERPROFILE%\miniconda3\python.exe"
+if not defined PY if exist "%LOCALAPPDATA%\Programs\Python" for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do if not defined PY if exist "%%~fD\python.exe" set "PY=%%~fD\python.exe"
 
 echo ===============================================================
-echo   正在启动 SHKit 图形界面 ...
-echo   使用的 Python: %PY%
+echo   Starting SHKit GUI ...
+if defined PY (
+  echo   Python: %PY%
+) else (
+  echo   Python: py -3  ^(from PATH^)
+)
 echo ===============================================================
 echo.
 
-"%PY%" -m shkit.gui %*
+if defined PY (
+  "%PY%" -m shkit.gui %*
+) else (
+  py -3 -m shkit.gui %*
+)
 
 echo.
 echo ---------------------------------------------------------------
-echo   程序已退出 (exit code = %ERRORLEVEL%)
-echo   若上面有报错，请把整段内容发给我。
+echo   The GUI has exited (exit code = %ERRORLEVEL%).
+echo   If there is a traceback above, please copy the whole block.
 echo ---------------------------------------------------------------
 pause
 popd
