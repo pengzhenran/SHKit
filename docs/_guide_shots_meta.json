@@ -1,0 +1,27 @@
+{
+ "tabs": [
+  "地图",
+  "逐阶谱",
+  "诊断报告",
+  "系数统计",
+  "数值表",
+  "逐历元诊断",
+  "时间序列",
+  "趋势与周年",
+  "水平形变"
+ ],
+ "ntime": 24,
+ "saved": {
+  "gui_01_demo_main.png": 467405,
+  "gui_02_demo_spectrum.png": 244073,
+  "gui_03_demo_report.png": 310228,
+  "gui_04_demo_coeffs.png": 252822,
+  "gui_05_demo_map.png": 493495,
+  "gui_11_values.png": 279253,
+  "gui_15_horizontal.png": 631655,
+  "gui_16_multitime_map.png": 281778,
+  "gui_12_epochs.png": 300071,
+  "gui_13_series.png": 312822,
+  "gui_14_trend.png": 428723
+ }
+}

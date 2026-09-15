@@ -1,0 +1,102 @@
+﻿================================================================================
+ SHKit — 第三方组件与许可声明 / Third-Party Notices
+================================================================================
+
+本文件随 SHKit 发行包一同分发。它声明 SHKit 所使用的第三方组件的版权与许可，
+**不改变各组件自身的许可条款**。完整分析与合规清单见
+../docs/许可与闭源商用说明.md。
+
+This file is distributed with SHKit. It states the copyright and licence of the
+third-party components SHKit uses. It does not alter the terms of any of those
+licences. See ../docs/许可与闭源商用说明.md for the full analysis.
+
+--------------------------------------------------------------------------------
+1. SHKit 自身 / SHKit itself
+--------------------------------------------------------------------------------
+MIT License. Copyright (c) 2026 Zhenran Peng.
+SHKit 的自有代码（包括图形界面代码）采用 MIT 许可。
+
+--------------------------------------------------------------------------------
+2. Qt for Python (PySide6) —— 图形界面 / GUI  ★ 重点
+--------------------------------------------------------------------------------
+组件      : PySide6 (Qt for Python) 与 Qt 6 运行库
+版本      : PySide6-Essentials 6.8.3 / Qt 6.8.x
+版权      : Copyright (C) The Qt Company Ltd. and contributors.
+许可      : GNU Lesser General Public License v3 (LGPL-3.0)
+            亦提供 GPL-3.0 与商业许可作为替代。
+
+本软件**以 LGPL-3.0 条款使用 PySide6 与 Qt**，并满足以下条件：
+
+  (a) **动态链接**：PySide6 与 Qt 以共享库（.dll / .so / .dylib）形式使用，
+     本软件未以任何方式静态链接 Qt，也未将其并入本软件的二进制；
+  (b) **未修改**：本软件未对 PySide6 或 Qt 的源代码作任何修改；
+  (c) **可替换**：用户可以用自己编译或从其他来源获取的同版本 Qt 库替换发行包中的
+     Qt 库，并重新运行本软件；
+  (d) **随附许可**：完整的 LGPL-3.0 文本见 licenses/LGPL-3.0.txt，
+     GPL-3.0 文本见 licenses/GPL-3.0.txt（LGPL-3.0 以引用方式并入 GPL-3.0）；
+  (e) **版权声明**：以上版权声明在本文件中保留。
+
+遵守以上条件时，依据 LGPL-3.0 分发本软件**不需要公开本软件自身的源代码**。
+
+⚠️ 注意：完整版 `PySide6` 发行包会附带 `PySide6-Addons`，其中的 **Qt Charts** 与
+**Qt Data Visualization** 等模块为 **GPL-only**，会使其使用者必须在 GPL 下发布。
+本软件**刻意只依赖 `PySide6-Essentials`**，且**全部绘图使用 matplotlib**，
+不导入任何 GPL-only 的 Qt 模块。
+
+⚠️ PySide6 的 wheel 包**不包含 LGPL-3.0 许可证文本**（只带
+`LicenseRef-Qt-Commercial.txt`），因此本发行包自行提供 licenses/LGPL-3.0.txt
+与 licenses/GPL-3.0.txt。
+
+--------------------------------------------------------------------------------
+3. 数值与绘图依赖 / Numerical and plotting dependencies
+--------------------------------------------------------------------------------
+numpy            BSD-3-Clause            Copyright (c) NumPy Developers
+scipy            BSD-3-Clause            Copyright (c) SciPy Developers
+matplotlib       PSF-based (BSD 兼容)    Copyright (c) Matplotlib Development Team
+pandas           BSD-3-Clause            Copyright (c) Pandas Development Team
+xarray           Apache-2.0              Copyright (c) xarray Developers
+netCDF4-python   MIT                     Copyright (c) Unidata
+psutil           BSD-3-Clause            Copyright (c) Giampaolo Rodola
+
+matplotlib 使用 Python Software Foundation 风格的许可（BSD 兼容），
+可自由用于闭源商业软件；本软件的所有科学绘图均由其完成。
+
+netCDF4-python 在运行时可能链接 HDF5、libcurl、zlib 等库，
+其许可为各自的 BSD 风格/公有领域许可，见发行包中各库自带声明。
+
+--------------------------------------------------------------------------------
+4. 数据 / Data
+--------------------------------------------------------------------------------
+data/coastline_110m.npz, data/borders_110m.npz
+    Natural Earth 110m 海岸线与国界数据（程序只用其中的海岸线；国界数据随包附带但不绘制）。Natural Earth 为**公有领域**
+    (public domain)，无使用限制。
+data/love_numbers.npy
+    载荷勒夫数 (load Love numbers) 表，随 SHKit 提供的数值表，
+    供 GRACE 等效水高 (EWH) 换算使用。
+
+--------------------------------------------------------------------------------
+5. 打包工具（不随本软件分发）/ Packaging tool (not redistributed)
+--------------------------------------------------------------------------------
+PyInstaller 为 GPL-2.0 **with a special exception**：该例外明确允许使用
+PyInstaller 打包的程序采用任意许可（包括闭源商业许可）。
+PyInstaller 本身不随本软件分发。
+
+--------------------------------------------------------------------------------
+6. 快速声明文本（可直接放入"关于"对话框）/ Short notice text
+--------------------------------------------------------------------------------
+中文：
+  本软件使用 Qt for Python (PySide6) 6.8.3，依据 GNU LGPL v3 条款使用，
+  以动态链接方式调用，未作修改。完整许可文本见 licenses/ 目录。
+  Qt 及其商标归 The Qt Company Ltd. 所有。
+
+English:
+  This application uses Qt for Python (PySide6) 6.8.3 under the terms of the
+  GNU Lesser General Public License v3. It is used as an unmodified,
+  dynamically linked library. Full licence texts are provided in the licenses/
+  directory. Qt and the Qt logo are trademarks of The Qt Company Ltd.
+
+================================================================================
+免责声明：本文件由开发者整理，旨在协助合规，**不构成法律意见**。
+正式商业发行前请自行审查或咨询专业人士。
+This file is not legal advice.
+================================================================================

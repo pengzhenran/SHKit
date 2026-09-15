@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shkit"
+version = "2.0.1"
+description = "Spherical harmonic analysis/synthesis for arbitrary scattered points and arbitrary (including regional) grids"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Joe" }]
+keywords = ["spherical harmonics", "geodesy", "GRACE", "gravity", "Slepian",
+            "quadrature", "scattered data"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+io = ["pandas>=2.0", "xarray>=2023.1", "netCDF4>=1.6"]
+perf = ["psutil>=5.9"]
+plot = ["matplotlib>=3.6"]
+# GUI: PySide6-Essentials (LGPLv3) on purpose - NOT the full "PySide6", whose
+# Addons bundle GPL-only modules (Qt Charts, Qt Data Visualization, ...) that
+# would block closed-source commercial distribution.  See
+# docs/许可与闭源商用说明.md
+gui = ["PySide6-Essentials>=6.5", "matplotlib>=3.6"]
+full = ["pandas>=2.0", "xarray>=2023.1", "netCDF4>=1.6", "psutil>=5.9",
+        "matplotlib>=3.6", "PySide6-Essentials>=6.5"]
+
+[project.scripts]
+shkit = "shkit.cli:main"
+shkit-gui = "shkit.gui.app:main"
+
+[tool.setuptools]
+packages = ["shkit", "shkit.gui"]
+
+[tool.setuptools.package-data]
+shkit = ["../data/*.npy", "../data/*.npz"]

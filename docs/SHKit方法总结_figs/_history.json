@@ -1,0 +1,41 @@
+{
+ "font_warnings": [
+  "Glyph 178 (\\N{SUPERSCRIPT TWO}) missing from font(s) SimHei.",
+  "Glyph 8722 (\\N{MINUS SIGN}) missing from font(s) SimHei.",
+  "Glyph 8722 (\\N{MINUS SIGN}) missing from font(s) SimHei.",
+  "Glyph 7488 (\\N{MODIFIER LETTER CAPITAL T}) missing from font(s) SimHei.",
+  "Glyph 178 (\\N{SUPERSCRIPT TWO}) missing from font(s) SimHei.",
+  "Glyph 178 (\\N{SUPERSCRIPT TWO}) missing from font(s) SimHei.",
+  "Glyph 8722 (\\N{MINUS SIGN}) missing from font(s) SimHei.",
+  "Glyph 8722 (\\N{MINUS SIGN}) missing from font(s) SimHei.",
+  "Glyph 7488 (\\N{MODIFIER LETTER CAPITAL T}) missing from font(s) SimHei.",
+  "Glyph 178 (\\N{SUPERSCRIPT TWO}) missing from font(s) SimHei."
+ ],
+ "current_file": {
+  "modelname": "yantze_shkit_coeffs",
+  "method": "projection",
+  "weight_rule": "delaunay",
+  "weight_sum": "0.001818723666251",
+  "max_degree": "12",
+  "target": "zero-filled global",
+  "tau": "None",
+  "c00": 0.0001447294308010306,
+  "own_weight_sum": 0.001818723666251,
+  "dc_expected_from_own_weights": 0.00014472943080103058,
+  "ratio_vs_lattice": 69.98457886553253,
+  "ratio_vs_delaunay": 1.0000000000000002,
+  "self_consistent": true
+ },
+ "reproduced_original_cg_delaunay": {
+  "weight_rule": "delaunay",
+  "c00": 0.02381444305344458,
+  "ratio_vs_lattice": 11515.582966008993,
+  "implied_area_km2": 12174129.204319319,
+  "residual_rms": 7.306672193358271e-06,
+  "cg_info": [
+   0
+  ],
+  "n_warnings": 5,
+  "warn_c00": true
+ }
+}

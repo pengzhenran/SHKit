@@ -1,0 +1,27 @@
+{
+ "demo": {
+  "method": "iterative",
+  "rule": "voronoi",
+  "n_warn": 1,
+  "npoints": 2500,
+  "suggested_rule": "voronoi"
+ },
+ "projection": {
+  "method": "projection",
+  "rule": "lattice",
+  "c00": 2.0680188856906873e-06,
+  "n_warn": 4,
+  "warn_c00": false,
+  "resid": 0.9996580445279176,
+  "resid_w": 0.9996580502084206
+ },
+ "cg": {
+  "method": "cg",
+  "rule": "lattice",
+  "c00": 0.023764302545447424,
+  "n_warn": 6,
+  "warn_c00": true,
+  "warn_collapsed": true,
+  "resid": 7.161922032446364e-06
+ }
+}

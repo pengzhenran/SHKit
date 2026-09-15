@@ -1,0 +1,29 @@
+{
+  "method": "quadrature",
+  "auto_choice": null,
+  "n_points": 2500,
+  "nmax": 12,
+  "ncoef": 169,
+  "ntime": 1,
+  "weight_rule": "voronoi",
+  "weight_sum": 12.566370614359172,
+  "coverage": 1.0,
+  "overdetermination": 14.792899408284024,
+  "shannon": 169.0,
+  "gram_deviation": 0.0012003242629511357,
+  "condition_number": NaN,
+  "residual_rms": 0.016503215719358443,
+  "data_rms": 2.206194347731907,
+  "residual_rms_weighted": 0.016502405888613632,
+  "dc_mean_expected": -1.423405871952892,
+  "dc_mean_got": -1.4234058719528926,
+  "fit_rmse_rel": 0.007480399782695793,
+  "regularization": null,
+  "alpha": 0.0,
+  "n_iterations": 0,
+  "lmax_recommended": 34,
+  "resolution_km": 1667.923899668381,
+  "warnings": [
+    "正变换公式（输入=「无量纲重力位系数 C_nm/S_nm」）：\n    C_nm = a_nm / f_u,  f_u = 1（网格本身就是无量纲位系数场）\n导出的是经典无量纲位系数 C_nm。\n反变换公式（输出=「无量纲重力位系数 C_nm/S_nm」）：\n    重建场 = C_nm × f_u,  f_u = 1（网格本身就是无量纲位系数场）\n        —— 与输入同物理量，可直接与原数据逐点比对；\n    输出场 = C_nm × f_t,  f_t = 1（网格本身就是无量纲位系数场）\n        —— 与「输入是」同档，所以输出场就是重建场本身。"
+  ]
+}

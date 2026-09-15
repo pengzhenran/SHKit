@@ -1,0 +1,1258 @@
+# -*- coding: utf-8 -*-
+"""Generate the screenshot-based HTML user guide for SHKit.
+
+    python docs/build_guide.py                        # 抓对话框截图 + 写 HTML + 校验
+    python docs/build_guide.py --only-panels --scale 2.0   # 面板特写（高 DPI）
+    python docs/build_guide.py --trim                 # 裁掉配图四周的白边
+    python docs/build_guide.py --no-shots             # 只重写 HTML
+
+What it does
+------------
+1. Captures the *dialogs* of the running program offscreen (关于 / 作者信息、
+   公众号二维码、使用说明窗口本身) at ``--scale`` (default 1.25), so the saved
+   pixmaps carry more real pixels than the window has logical ones.  面板特写
+   （左右两个停靠面板）另跑一次 ``--only-panels --scale 2.0``：整窗截图缩到
+   说明书的栏宽后小字会看不清，分区特写按接近 1:1 显示才读得清。
+   界面主窗口的 10 张截图由 ``docs/_summary_shots.py`` 生成，示例配图来自
+   ``docs/SHKit方法总结_figs/``，两者都已经在 ``使用说明_img/`` 里。
+2. Renders ``docs/使用说明.html`` —— 单文件、离线、只引用相对路径图片，可以
+   直接在浏览器打开，也可以在程序里由 ``帮助 → 使用说明``（F1）用
+   ``QTextBrowser`` 渲染。图片**不写死宽度**：``GuideDialog`` 在渲染前按视口
+   逐张写入尺寸（只缩不放），``--trim`` 则把配图四周的白边裁掉。
+3. 用 ``QTextDocument`` 回读一遍：确认每个 ``src`` 都能解析到真实文件、正文没有
+   未替换的模板花括号、标签闭合、目录锚点有效、正文不含 Slepian 说法。
+
+Graphics note
+-------------
+Must run offscreen with ``QT_QPA_FONTDIR`` pointing at the Windows font
+directory; a font-less offscreen run renders every Chinese glyph as a tofu box
+(that is what made ``tests/_gui_shots/`` unusable).  Qt reads
+``QT_SCALE_FACTOR`` once, when ``QApplication`` is constructed, which is why the
+panel/dialog captures run in separate processes.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from html import escape
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHKIT = os.path.dirname(HERE)
+sys.path.insert(0, SHKIT)
+os.chdir(SHKIT)
+
+from PySide6.QtCore import QUrl                                  # noqa: E402
+from PySide6.QtGui import QFont                                  # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget               # noqa: E402
+
+IMG_DIRNAME = "使用说明_img"
+OUT_NAME = "使用说明.html"
+IMG_DIR = os.path.join(HERE, IMG_DIRNAME)
+OUT_PATH = os.path.join(HERE, OUT_NAME)
+
+# 图片尺寸（原始像素）只用于浏览器兜底：Qt 端由 GuideDialog 按视口逐张定尺寸。
+W_GUI = 1600          # GUI 截图 1600x960
+W_WIDE = 1352         # 示例配图常见宽度
+
+from shkit import __version__                                    # noqa: E402
+from shkit.gui import main_window as mw                          # noqa: E402
+
+RESULTS: list[tuple[bool, str, str]] = []
+
+
+def check(name: str, ok: bool, detail: str = "") -> None:
+    RESULTS.append((bool(ok), name, detail))
+    print(f"[{'PASS' if ok else 'FAIL'}] {name:56s} {detail}", flush=True)
+
+
+# --------------------------------------------------------------------- helpers
+def figure(name: str, natural: int, caption: str) -> str:
+    """一张居中插图 + 一行居中题注。
+
+    刻意**不**用 ``<figure>/<figcaption>``：Qt 富文本不认这两个标签，只会退化成
+    左对齐的一行字。``<p align="center">`` 在 Qt 与浏览器里都居中，所以图片与
+    题注在两边看起来一致。宽度也不写死 —— GuideDialog 渲染后按视口逐张定尺寸
+    （只在超宽时缩小、绝不放大），浏览器侧由 ``img{max-width:100%}`` 兜底。
+    """
+    return (f'<p align="center"><img src="{IMG_DIRNAME}/{name}" '
+            f'alt="插图"></p>\n'
+            f'<p align="center"><span style="color:#556;font-size:9pt;">'
+            f'{caption}</span></p>')
+
+
+FIG_MAIN = figure("gui_01_demo_main.png", W_GUI,
+                  "图 1　整体界面：左侧数据面板 / 中间九个页签 / 右侧分析参数 / 底部状态栏")
+FIG_MAP_RECON = figure("gui_05_demo_map.png", W_GUI,
+                       "图 2　地图页签：原始 / 重建场 / 差值 / 输出场，四选一")
+FIG_PANEL_DATA = figure("panel_data.png", 320,
+                        "图 3　左侧数据面板特写：打开散点/网格、生成示例数据、"
+                        "时次滑块与数据摘要")
+FIG_PANEL_PARAMS = figure("panel_params.png", 380,
+                          "图 4　右侧分析参数面板特写：nmax、积分元规则、"
+                          "估计方法、物理量与两条公式、运行/停止与进度")
+FIG_GUIDE_WIN = figure("dlg_guide.png", 1040,
+                       "图 5　使用说明窗口：可滚动、可最大化、离线可读")
+FIG_ABOUT = figure("dlg_about.png", 880,
+                   "图 6　帮助 → 关于 / 作者信息：作者与联系方式、公众号二维码、六步快速上手")
+FIG_VALUES = figure("gui_11_values.png", W_GUI,
+                    "图 7　数值表页签：网格数据是「行=纬、列=经」，可整体复制成表格 "
+                    "或导出 CSV（散点数据则是逐点一行）")
+EX_VORONOI = figure("ex_02_voronoi_trap.png", 1066,
+                    "图 8　区域点集绝不能做球面 Voronoi：Σw 恒等于 4π，面积虚高 14.93 倍")
+EX_LEAKAGE = figure("ex_03_cap_leakage.png", W_WIDE,
+                    "图 9　截断泄漏：即使覆盖全球，L=12 也重建不出一个 20° 的 0/1 帽")
+FIG_Y_PROJ_MAP = figure("gui_08_yangtze_projection_map.png", W_GUI,
+                        "图 10　长江流域掩膜（142 846 点）的投影重建场")
+FIG_Y_PROJ_REPORT = figure("gui_06_yangtze_projection_report.png", W_GUI,
+                           "图 11　区域数据用 projection：报告里给出覆盖率与 C00 一致性检查")
+FIG_Y_PROJ_SPEC = figure("gui_07_yangtze_projection_spectrum.png", W_GUI,
+                         "图 12　区域数据的逐阶谱：低阶几乎全被截断泄漏吃掉")
+FIG_Y_CG_REPORT = figure("gui_09_yangtze_cg_report.png", W_GUI,
+                         "图 13　同一份区域数据改用 cg：C00 与加权均值不一致，警告触发")
+FIG_Y_CG_MAP = figure("gui_10_yangtze_cg_map.png", W_GUI,
+                      "图 14　cg 的 C00 偏离使重建场整体偏移——这就是必须看报告的理由")
+FIG_MULTITIME = figure("gui_16_multitime_map.png", W_GUI,
+                       "图 15　多时次数据：时次滑块 / 范围 / 播放与 GIF 导出 / "
+                       "逐时次导出 / 色标面板都在地图页上方一行")
+FIG_EPOCHS = figure("gui_12_epochs.png", W_GUI,
+                    "图 16　逐历元诊断页：每个历元一行（日期、相对 RMSE、C00、"
+                    "残差 RMS、可疑），离群历元只高亮、不自动剔除")
+FIG_SERIES = figure("gui_13_series.png", W_GUI,
+                    "图 17　时间序列页：单点或区域平均曲线 + 趋势线 + 周年拟合 + 残差带宽，"
+                    "横轴是十进制年")
+FIG_TREND = figure("gui_14_trend.png", W_GUI,
+                   "图 18　趋势与周年页：趋势场 / 周年振幅场 / 周年相位场；"
+                   "相位场把振幅很小的格子遮掉（那里没有可谈的相位）")
+FIG_HORIZ = figure("gui_15_horizontal.png", W_GUI,
+                   "图 19　水平形变页：北向 / 东向分量与矢量场（极点不画箭头）")
+EX_ROUNDTRIP = figure("ex_01_fib_roundtrip.png", 1118,
+                      "图 20　采样准正交时，迭代校正逐次逼近最小二乘解")
+EX_SHANNON = figure("ex_04_shannon_sweep.png", W_WIDE,
+                    "图 21　区域数据的 Shannon 上限：长江掩膜在 L=12 时峰值 3.46e-4 "
+                    "已贴住 Shannon 数 3.50e-4")
+EX_CAPFLOOR = figure("ex_05_cap_floor.png", W_WIDE,
+                     "图 22　截断泄漏是地板：全局 0/1 帽的残差停在截断地板，迭代算法动弹不了它")
+EX_NOISE = figure("ex_06_noise.png", W_WIDE,
+                  "图 23　噪声主导时三种估计量等价：决定精度的是阶数，不是算法")
+FIG_REPORT = figure("gui_03_demo_report.png", W_GUI,
+                    "图 24　诊断报告页签：估计方法、求积完备性、条件数、推荐 nmax 与警告")
+FIG_SPECTRUM = figure("gui_02_demo_spectrum.png", W_GUI,
+                      "图 25　逐阶谱页签：逐阶功率与拟合残差")
+FIG_COEFFS = figure("gui_04_demo_coeffs.png", W_GUI,
+                    "图 26　系数统计页签：C_nm / S_nm 的数值表")
+
+
+# ------------------------------------------------------------------------ 截图
+#: 抓图时把 Qt 的缩放因子调到 1.25 —— 同样的窗口尺寸会渲染出 1.25 倍的**真实
+#: 像素**（1280x768 逻辑 → 1600x960 图片）。说明书里图片显示宽度约 850~900 px，
+#: 也就是接近 1:1 呈现，不会再被缩小一半而发糊。
+SHOT_SCALE = float(os.environ.get("SHKIT_SHOT_SCALE", "1.25"))
+
+#: 局部特写（抓单个面板）：整窗截图缩到说明书的栏宽后，面板里 10pt 的小字只剩
+#: ~7px，读不清。所以每个功能区都再给一张特写 —— 这正是随包 GRACE Downloader
+#: 说明书能看清的做法（整窗 + 分区特写）。
+#: 第三项是从「控件底部」往下保留多少逻辑像素（去掉面板里的空白），0 = 不裁。
+GUI_PANELS = [
+    ("panel_data", "left", "左：数据面板", 120),
+    ("panel_params", "right", "右：分析参数面板", 150),
+]
+
+
+def _trim_white(px, tol: int = 244, keep: int = 6):
+    """Trim near-white margins around a screenshot/plot.
+
+    matplotlib 存出来的示例配图四周留了很宽的白边；说明书里按栏宽显示时，
+    这些白边会撑出一大片空白，看起来像「图没加载出来」。这里按行/列裁掉
+    几乎全白的边缘（保留几个像素的呼吸空间）。
+    """
+    from PySide6.QtGui import QImage
+
+    img = px.toImage().convertToFormat(QImage.Format_RGB32)
+    w, h = img.width(), img.height()
+    if w < 4 or h < 4:
+        return px
+
+    def row_blank(y: int) -> bool:
+        for x in range(0, w, 3):
+            if img.pixelColor(x, y).lightness() < tol:
+                return False
+        return True
+
+    def col_blank(x: int) -> bool:
+        for y in range(0, h, 3):
+            if img.pixelColor(x, y).lightness() < tol:
+                return False
+        return True
+
+    top = 0
+    while top < h - keep and row_blank(top):
+        top += 1
+    bottom = h - 1
+    while bottom > top + keep and row_blank(bottom):
+        bottom -= 1
+    left = 0
+    while left < w - keep and col_blank(left):
+        left += 1
+    right = w - 1
+    while right > left + keep and col_blank(right):
+        right -= 1
+
+    if top <= 1 and left <= 1 and bottom >= h - 2 and right >= w - 2:
+        return px                                    # 没有可裁的边
+    return px.copy(max(0, left - keep), max(0, top - keep),
+                   min(w - left, right - left + 1 + 2 * keep),
+                   min(h - top, bottom - top + 1 + 2 * keep))
+
+
+def _content_height(widget, pad: int, scale: float) -> int:
+    """Height (in device pixels) down to the widget's last visible child.
+
+    QDockWidget 里，控件下面往往是一大片空白；照原样存下来会变成一张又细又长、
+    正文只占上四分之一的图。这里算到最后一个可见子控件的底边，再留 ``pad``。
+    """
+    from PySide6.QtCore import QPoint
+
+    bottom = 0
+    for child in widget.findChildren(QWidget):
+        if not child.isVisible() or child.height() <= 1:
+            continue
+        top = child.mapTo(widget, QPoint(0, 0)).y()
+        bottom = max(bottom, top + child.height())
+    if bottom <= 0:
+        return widget.height()
+    return min(widget.height(), int((bottom + pad) * scale))
+
+
+def _grab_widgets(widgets, keep_from_bottom_px: int = 0):
+    """Grab widgets (stacked vertically) and trim the trailing empty area."""
+    from PySide6.QtGui import QPainter, QPixmap
+
+    pixmaps = []
+    for w in widgets:
+        px = w.grab()
+        scale = float(px.devicePixelRatio()) or 1.0
+        h = _content_height(w, keep_from_bottom_px, scale) if keep_from_bottom_px else 0
+        if 0 < h < px.height():
+            px = px.copy(0, 0, px.width(), h)
+        pixmaps.append(px)
+    if not pixmaps:
+        return QPixmap()
+    if len(pixmaps) == 1:
+        return pixmaps[0]
+    width = max(p.width() for p in pixmaps)
+    height = sum(p.height() for p in pixmaps) + 6 * (len(pixmaps) - 1)
+    out = QPixmap(width, height)
+    out.fill()
+    painter = QPainter(out)
+    y = 0
+    for p in pixmaps:
+        painter.drawPixmap(0, y, p)
+        y += p.height() + 6
+    painter.end()
+    return out
+
+
+def trim_guide_images() -> None:
+    """Trim the white margins around every picture in ``使用说明_img/``.
+
+    示例配图（matplotlib 出图）四周白边很宽，按栏宽显示时会撑出一大片空白，
+    看起来像「图没加载出来」；裁掉之后版面紧凑很多。
+    """
+    from PySide6.QtGui import QPixmap
+
+    os.makedirs(IMG_DIR, exist_ok=True)
+    for name in sorted(os.listdir(IMG_DIR)):
+        if not name.lower().endswith((".png", ".jpg", ".jpeg")):
+            continue
+        path = os.path.join(IMG_DIR, name)
+        px = QPixmap(path)
+        if px.isNull():
+            continue
+        before = (px.width(), px.height())
+        px2 = _trim_white(px)
+        if (px2.width(), px2.height()) != before:
+            px2.save(path)
+            check(f"裁白边 {name}", True,
+                  f"{before[0]}x{before[1]} -> {px2.width()}x{px2.height()}")
+        else:
+            check(f"裁白边 {name}", True, f"无需裁剪（{before[0]}x{before[1]}）")
+
+
+def capture_panel_shots() -> None:
+    """Region shots of the left/right docks, at the current QT_SCALE_FACTOR.
+
+    面板的**逻辑**尺寸由主窗口宽 1280 决定（左侧 ~300、右侧 ~470 逻辑像素），
+    所以缩放因子越高、文件里的真实像素越多。Qt 只在构造 QApplication 时读一次
+    ``QT_SCALE_FACTOR``，因此这一步由 ``--only-panels`` 在独立进程里跑。
+    """
+    app = QApplication.instance() or QApplication([])
+    os.makedirs(IMG_DIR, exist_ok=True)
+
+    win = mw.MainWindow()
+    win.resize(1280, 860)
+    win.show()
+    app.processEvents()
+    win.make_demo()                      # 数据面板有内容才值得拍
+    win.tabs.setCurrentIndex(0)
+    app.processEvents()
+    app.processEvents()
+
+    targets = {"left": [win._data_dock], "right": [win.param_dock]}
+    for name, group, label, pad in GUI_PANELS:
+        widgets = targets.get(group, [])
+        if not widgets:
+            continue
+        px = _grab_widgets(widgets, keep_from_bottom_px=pad)
+        path = os.path.join(IMG_DIR, f"{name}.png")
+        ok = px.save(path)
+        size = os.path.getsize(path) if os.path.exists(path) else 0
+        check(f"截图 {name}.png（{label}）", ok and size > 8000,
+              f"{px.width()}x{px.height()} px（dpr={px.devicePixelRatio()}）, "
+              f"{size/1024:.0f} kB")
+    win.close()
+    app.processEvents()
+
+
+def capture_dialog_shots() -> None:
+    """Capture the three dialogs (About / WeChat QR / the guide itself)."""
+    app = QApplication.instance() or QApplication([])
+    app.setFont(QFont("SimHei", 10))
+
+    os.makedirs(IMG_DIR, exist_ok=True)
+    win = mw.MainWindow()
+    win.resize(1280, 768)          # 逻辑尺寸；实际像素 = 1280*1.25 x 768*1.25
+    win.show()
+    app.processEvents()
+
+    def snap(widget, name: str, resized: bool = False) -> None:
+        widget.show()
+        app.processEvents()
+        if resized and hasattr(widget, "refresh"):
+            # 布局要落地后才拿得到真实视口宽度；说明书还要按新宽度重渲染一次
+            widget.refresh()
+        app.processEvents()
+        app.processEvents()
+        path = os.path.join(IMG_DIR, name)
+        px = widget.grab()
+        ok = px.save(path)
+        size = os.path.getsize(path) if os.path.exists(path) else 0
+        check(f"截图 {name}", ok and size > 20000,
+              f"{px.width()}x{px.height()} px（dpr={px.devicePixelRatio()}）, "
+              f"{size/1024:.0f} kB")
+        widget.close()
+        app.processEvents()
+
+    snap(mw.AboutDialog(win), "dlg_about.png")       # 关于：个人信息 + 二维码
+    snap(mw.WeChatDialog(win), "dlg_wechat.png")     # 放大二维码
+    guide = mw.GuideDialog(win)                      # 使用说明窗口本身
+    guide.resize(1040, 900)
+    snap(guide, "dlg_guide.png", resized=True)
+    win.close()
+    app.processEvents()
+
+
+# ------------------------------------------------------------------- HTML 正文
+def build_html() -> str:
+    """Assemble the complete guide document."""
+    v = __version__
+    author = f"{mw.AUTHOR_NAME_CN}（{mw.AUTHOR_NAME_EN}）"
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SHKit 图形界面使用说明 v{v}</title>
+<style>
+body {{ font-family: "Microsoft YaHei UI", "Microsoft YaHei", SimHei, sans-serif;
+        font-size: 10.5pt; color: #223; line-height: 1.55; margin: 4px 8px; }}
+h1 {{ font-size: 17pt; color: #1b3a5c; border-bottom: 2px solid #1b3a5c;
+      padding-bottom: 6px; }}
+h2 {{ font-size: 13.5pt; color: #1b3a5c; margin-top: 26px;
+      border-left: 5px solid #2f6fa8; padding-left: 8px; }}
+h3 {{ font-size: 11.5pt; color: #2f6fa8; margin-top: 18px; }}
+table {{ border-collapse: collapse; margin: 8px 0; }}
+th {{ background: #eaf1f8; color: #1b3a5c; text-align: left;
+      padding: 5px 9px; border: 1px solid #b9cde0; }}
+td {{ padding: 5px 9px; border: 1px solid #b9cde0; vertical-align: top; }}
+code {{ font-family: Consolas, "Courier New", monospace; background: #f2f4f7;
+        color: #a33; padding: 0 3px; }}
+pre {{ font-family: Consolas, "Courier New", monospace; background: #f7f8fa;
+       border: 1px solid #dde3ea; padding: 8px 10px; color: #234;
+       white-space: pre-wrap; }}
+img {{ max-width: 100%; }}
+.tip {{ background: #f0f7f2; border: 1px solid #cfe6d8; padding: 7px 10px; }}
+.warn {{ background: #fdf3f3; border: 1px solid #eccfcf; padding: 7px 10px;
+         color: #8a2b2b; }}
+.meta {{ color: #667; font-size: 9.5pt; }}
+.toc td {{ border: none; padding: 2px 10px 2px 0; }}
+</style>
+</head>
+<body>
+
+<h1>SHKit 图形界面使用说明</h1>
+<p class="meta">版本 v{v}　·　{author}　·　{mw.AUTHOR_AFFILIATION_CN}<br>
+邮箱 <a href="mailto:{mw.AUTHOR_EMAIL}">{mw.AUTHOR_EMAIL}</a>　·　
+电话 {mw.AUTHOR_PHONE}　·　
+课题组公众号「{mw.WECHAT_ACCOUNT}（{mw.WECHAT_ACCOUNT_EN}）」</p>
+
+<div class="tip">
+<b>界面上随时可看：</b>菜单 <b>帮助 → 📘 使用说明</b>（快捷键 <b>F1</b>）打开的就是本页；
+<b>帮助 → ℹ️ 关于 / 作者信息</b> 里有作者、单位、联系方式、公众号二维码与六步快速上手。
+</div>
+
+{FIG_MAIN}
+
+<h2 id="toc">目录</h2>
+<table class="toc">
+<tr><td>0　三十秒上手</td><td><a href="#s1">1　安装</a></td>
+    <td><a href="#s2">2　启动</a></td></tr>
+<tr><td><a href="#s3">3　界面总览</a></td><td><a href="#s32">3.2　九个页签各看什么</a></td>
+    <td><a href="#s4">4　操作流程</a></td></tr>
+<tr><td><a href="#s44">4.4　多时次数据：一次解完</a></td>
+    <td><a href="#s45">4.5　逐历元诊断</a></td>
+    <td><a href="#s46">4.6　时间序列</a></td></tr>
+<tr><td><a href="#s47">4.7　趋势与周年</a></td>
+    <td><a href="#s48">4.8　水平形变</a></td>
+    <td><a href="#s5">5　参数含义</a></td></tr>
+<tr><td><a href="#s6">6　怎么读诊断报告</a></td><td><a href="#s7">7　导出</a></td>
+    <td><a href="#s8">8　常见问题</a></td></tr>
+<tr><td><a href="#s9">9　作者与联系方式</a></td>
+    <td><a href="#s10">10　致谢</a></td><td></td></tr>
+</table>
+
+<h2 id="s0">0　三十秒上手</h2>
+<ol>
+<li>「文件 → 打开散点/网格」载入数据（没有数据就点<b>生成示例数据</b>先试一遍）；</li>
+<li>「输入是」选<b>正变换公式</b>（这串数是什么），「输出为」选<b>输出场</b>是什么
+    物理量 —— 只做「网格 → 系数 → 网格」往返的话两者都保持默认；</li>
+<li>「最大阶数 nmax」按需设；拿不准就先用默认值跑一次，诊断报告里的
+    <b>「推荐 nmax」</b>会告诉你这块数据撑得住多少阶；</li>
+<li>点<b>运行分析</b>（F5）。积分元规则 <code>auto</code>、估计方法
+    <code>quadrature</code>（直接求积），一次投影就出结果；</li>
+<li>地图页签看「原始 / 重建场（与输入同量）/ 差值 / 输出场」，另外八个页签是
+    逐阶谱、诊断报告、系数统计、数值表、逐历元诊断、时间序列、趋势与周年、水平形变；</li>
+<li><b>数据带时间（多时次/多历元）时</b>：地图页上方会出现时次滑块与范围，点
+    <b>逐历元诊断</b>页的「批量分析」一次解出所有历元（权重只算一次，比逐历元点
+    快得多），再在<b>时间序列</b>／<b>趋势与周年</b>页看时间变化；</li>
+<li>「文件」菜单导出系数 / 重建场 / 输出场 / 报告，地图页的
+    <b>逐时次导出</b>一次导出整个时间序列（可暂停、可停止）。</li>
+</ol>
+
+{FIG_MAP_RECON}
+
+<h2 id="s1">1　安装</h2>
+<p>SHKit 以 <b>Windows 安装程序</b>形式发布，<b>装完即用</b>：</p>
+<ol>
+<li>双击安装程序 <code>SHKit_Setup_v{v}.exe</code>；</li>
+<li>如果 Windows 弹出「用户账户控制 / 是否允许此应用更改设备」，选<b>是</b>；</li>
+<li>按向导点「下一步」；需要改安装位置就在这一步改（默认装到
+    <code>C:\\Program Files\\SHKit</code>）；</li>
+<li>点「安装」，等进度条走完，点「完成」。</li>
+</ol>
+<div class="tip">
+<b>不需要装 Python，也不需要 pip、不需要联网激活。</b>
+运行所需的组件、离线海岸线与勒夫数表、本说明书与全部配图都已经打进安装包；
+装完桌面上会出现 <b>SHKit</b> 快捷方式，开始菜单里也有。
+</div>
+<table>
+<tr><th>项目</th><th>要求 / 说明</th></tr>
+<tr><td>操作系统</td><td>Windows 10 / 11（64 位）</td></tr>
+<tr><td>内存</td><td>建议 8 GB 以上；区域数据、高阶（nmax &gt; 100）时更吃内存</td></tr>
+<tr><td>磁盘占用</td><td>约 400 MB（安装时预留 600 MB 更稳妥）</td></tr>
+<tr><td>权限</td><td>安装到 <code>Program Files</code> 需要管理员确认；装到用户目录则不需要</td></tr>
+<tr><td>卸载</td><td>「设置 → 应用」或开始菜单里的卸载项，按向导走完即可</td></tr>
+</table>
+<p class="meta">如果你拿到的是绿色版压缩包而不是安装程序，就直接把压缩包解压到任意
+目录（路径里尽量不要有空格），双击其中的 <code>SHKit.exe</code> 即可运行，无需安装。</p>
+
+<h2 id="s2">2　启动</h2>
+<p>安装完成后，用下面任意一种方式打开：</p>
+<ul>
+<li><b>桌面快捷方式</b>：双击桌面上的 <b>SHKit</b> 图标；</li>
+<li><b>开始菜单</b>：开始 → 所有应用 → SHKit；</li>
+<li><b>直接双击</b>安装目录里的 <code>SHKit.exe</code>。</li>
+</ul>
+<p>程序<b>完全离线</b>运行，不会联网、不上传任何数据。首次打开建议先点
+<b>「生成示例数据」</b>，用内置算例把整条流程走一遍（本文档图 1、图 2、图 7、
+图 19、图 24 ~ 图 26 就是这个算例的截图），然后再打开自己的数据。</p>
+
+<h2 id="s3">3　界面总览</h2>
+<p>窗口分四块：</p>
+<table>
+<tr><th>区域</th><th>内容</th></tr>
+<tr><td><b>左：数据</b></td><td>打开散点 / 打开网格、NetCDF 变量选择、时次滑块、
+    数据摘要（时间跨度、<b>当前时次</b>的数值范围与 RMS、缺测个数、变量单位、提示）</td></tr>
+<tr><td><b>中：页签</b></td><td>地图 / 逐阶谱 / 诊断报告 / 系数统计 / 数值表 /
+    逐历元诊断 / 时间序列 / 趋势与周年 / 水平形变（九个，见 3.2）</td></tr>
+<tr><td><b>右：分析参数</b></td><td>球谐分析参数 + 物理量与公式 + 重建显示选项 +
+    运行 / 停止 + 进度条</td></tr>
+<tr><td><b>底：状态栏</b></td><td>当前状态、方法、权重规则、用时</td></tr>
+</table>
+<p>下面两张是<b>原始像素</b>的面板特写（整窗缩到本页宽度后小字会变小，所以每个功能区
+单独给一张按原尺寸显示的图）。</p>
+
+{FIG_PANEL_DATA}
+{FIG_PANEL_PARAMS}
+<p>「地图」页签顶部的下拉可以在<b>四个场</b>之间切换：<b>原始数据</b>、
+<b>重建场</b>（与输入同物理量）、<b>差值</b>（原始 − 重建，同物理量）、
+<b>输出场</b>（按「输出为」换算出来的另一个物理量）。</p>
+<p>地图页上方最多有四行控件，都只影响<b>显示</b>、不影响分析结果：</p>
+<table>
+<tr><th>行</th><th>什么时候出现</th><th>作用</th></tr>
+<tr><td><b>色标控件</b></td><td>总是</td><td><code>Auto Range (2–98%)</code> /
+    <code>vmin</code> / <code>vmax</code> / <code>vcenter</code> +「应用色标」，
+    另有「对称色标」「海岸线」「取消聚焦」</td></tr>
+<tr><td><b>色标说明</b></td><td>总是</td><td>单独一行写明当前色标是按什么定出来的
+    （例如「自动 2–98%，对称于 0，→ [−0.0753, 0.0753]」）</td></tr>
+<tr><td><b>时间行</b></td><td>数据带时间轴时</td><td>时次滑块、◀/▶ 逐步、范围起止、
+    「全部」、当前时次的日期与十进制年</td></tr>
+<tr><td><b>播放行</b></td><td>同上</td><td>播放/暂停、帧率、<b>导出 GIF…</b>；
+    下一行是<b>逐时次导出</b>（前缀、格式、按钮）</td></tr>
+</table>
+<p><b>鼠标停在地图上</b>会显示该点的原始值、重建值、经纬度；网格数据吸附到最近格点，
+散点数据吸附到最近点（并给出点号）；多时次数据还会带上「第 k / N 个时次（日期）」。</p>
+<p><b>「生成示例数据」</b>按钮会造一份 2500 点的球面 Fibonacci 散点合成场
+（真实带限 12 阶 + 1% 噪声），不需要任何数据文件就能把整个流程走一遍 ——
+本文档里<b>图 1、图 2、图 7、图 19、图 24 ~ 图 26</b>就是走这个算例的真实截图。</p>
+
+<h3>3.1　帮助菜单</h3>
+<table>
+<tr><th>菜单项</th><th>作用</th></tr>
+<tr><td><b>帮助 → 📘 使用说明</b>（<b>F1</b>）</td><td>打开本页（截图版 HTML，
+    可滚动、可最大化）</td></tr>
+<tr><td><b>帮助 → ℹ️ 关于 / 作者信息</b></td><td>作者、单位、邮箱、电话、公众号
+    <b>与二维码</b>，以及六步快速上手</td></tr>
+<tr><td><b>帮助 → 📱 课题组公众号</b></td><td>放大显示公众号二维码</td></tr>
+<tr><td><b>帮助 → 第三方许可与声明…</b></td><td>本程序使用的第三方组件清单</td></tr>
+<tr><td><b>帮助 → GNU LGPL v3 / GPL v3 全文…</b></td><td>随程序分发的许可全文</td></tr>
+</table>
+
+{FIG_GUIDE_WIN}
+{FIG_ABOUT}
+
+<h3 id="s32">3.2　九个页签各看什么</h3>
+<table>
+<tr><th>页签</th><th>内容</th><th>什么时候看</th></tr>
+<tr><td><b>地图</b></td><td>四个场的平面图 + 色标 + 悬停读数</td>
+    <td>看空间分布；每次都从这张图开始</td></tr>
+<tr><td><b>逐阶谱</b></td><td>逐阶功率与拟合残差</td>
+    <td>判断解到几阶开始被噪声接管</td></tr>
+<tr><td><b>诊断报告</b></td><td>估计方法、求积完备性、覆盖率、条件数、推荐 nmax、
+    中文警告</td><td><b>每次分析后都该看</b>（见第 6 节）</td></tr>
+<tr><td><b>系数统计</b></td><td>C_nm / S_nm 的数值表</td>
+    <td>核对某几个系数、看奇异项</td></tr>
+<tr><td><b>数值表</b></td><td>整块场（或整份散点）的数值表，可复制、可导出 CSV</td>
+    <td>要把结果拿进别的软件里算</td></tr>
+<tr><td><b>逐历元诊断</b></td><td>多时次数据的逐历元解 + 相对 RMSE、C00、残差 RMS、
+    离群标记</td><td>批量处理时挑出坏历元；点一行跳到那个历元的地图</td></tr>
+<tr><td><b>时间序列</b></td><td>单点或区域平均的时间曲线 + 趋势线 + 周年拟合 +
+    残差带宽</td><td>看某个地方随时间怎么变</td></tr>
+<tr><td><b>趋势与周年</b></td><td>逐格点的趋势场，以及<b>每个拟合周期</b>的振幅场与
+    相位场（勾「含半年周期」会多出半年那一对）</td>
+    <td>要一张「变化速率图」或「季节性振幅图」时</td></tr>
+<tr><td><b>水平形变</b></td><td>北向 / 东向位移分量与矢量场</td>
+    <td>看质量迁移引起的水平位移（见 4.8）</td></tr>
+</table>
+
+{FIG_VALUES}
+
+<h2 id="s4">4　操作流程</h2>
+
+<h3>4.1　散点数据</h3>
+<ol>
+<li><b>打开散点…</b> → 选 <code>csv / txt / dat / tsv / npy / xlsx</code>。默认按
+    「第 1 列经度、第 2 列纬度、第 3 列数值」解释，带表头时优先按列名匹配；读入时的
+    推断结果写在左侧数据摘要的「提示」里 —— <b>先看一眼提示</b>，列认错了就在文件里
+    调整列顺序（或补一行列名）后重新打开。</li>
+<li>软件会<b>自动推断积分元规则</b>并设好下拉框：全球散点 → <code>voronoi</code>；
+    只覆盖一个区域 → <code>delaunay</code>。</li>
+<li>设<b>最大阶数 nmax</b>。经验：<code>nmax ≲ √(N/4)</code>（有噪声时按此保守取），
+    「诊断报告」里会给出<b>推荐 nmax</b>。</li>
+<li>点<b>运行分析</b>。完成后自动切到「重建场」并刷新报告、谱图、系数表。</li>
+</ol>
+<p><b>散点的多时次（同一个点、多个历元）</b>：支持。写成下面任一种即可 ——</p>
+<table>
+<tr><th>写法</th><th>例子</th></tr>
+<tr><td>矩阵 <code>.npy</code>（推荐，精度无损）</td><td><code>(N, 2+ntime)</code>：
+    第 1 列经度、第 2 列纬度、其余列 = 各历元</td></tr>
+<tr><td>宽表 <code>csv/txt</code>，列名 <code>value, value1, value2…</code></td>
+    <td>本软件「逐时次导出」写出来的就是这个格式</td></tr>
+<tr><td>宽表 <code>csv/txt</code>，<b>列名就是日期</b></td>
+    <td><code>lon,lat,2002-01-18,2002-02-17,…</code>（<code>2002-01</code>、
+    <code>2002</code> 也行）→ 时间轴直接用这些日期，趋势/周年页因此拟合得起来</td></tr>
+<tr><td>宽表 <code>csv/txt</code>，列名任意</td>
+    <td>程序按列名/位置自动认；认不出时只会取第一列，并在左侧「提示」里写明还剩下哪些
+    列没用上（脚本/API 里可以用 <code>val_col=["e2002","e2003"]</code> 指定）</td></tr>
+</table>
+<p>读进来后和网格一样：地图上出现<b>时间行</b>，「运行分析」<b>一次解完全部历元</b>，
+地图 / 播放 / 导出 GIF / 逐时次导出都按历元走。</p>
+<p>⚠️ <b>长表（tidy）格式不支持</b>：一行一个「点 × 历元」、另有一列日期的表，会被
+当成宽表解释（只取第一列数值）。这种情况软件会给出<b>明确警告</b>并提示先透视成宽表。</p>
+
+<h3>4.2　网格数据</h3>
+<ol>
+<li><b>打开网格…</b> → <code>nc / grd / npy / csv / txt</code>。选 <code>.nc</code>
+    时会出现「变量」下拉框，选好后点「载入」。纬度若原本是降序，读取时会自动翻转成
+    升序并在摘要里注明。</li>
+<li>全球等经纬网格（且 <code>nlon == 2·nlat</code>、<code>nlat</code> 为偶数）会
+    自动选 <code>dh</code>；其他情况选 <code>grid</code>（精确球带面积）。</li>
+<li>多时次数据用<b>时次滑块</b>切换；每次分析对应一个时次。要把所有时次一次解完，
+    见 4.4。</li>
+</ol>
+
+<p><b>大文件打开得很快（懒加载）</b>：多时次 <code>.nc</code> 打开时<b>只读第 1 个
+时次</b>（外加文件头与坐标轴），其余时次在<b>后台</b>按块补。实测那份
+720×1440×256（1.06 GB）的 CSR mascon：首屏 <b>0.61 s</b>，整块读要 <b>2.60 s</b>，
+补齐后两者<b>逐值一致</b>（省的是时间，不是精度）。载入完成后状态栏会写
+「其余 N 个时次后台读取中…」，补齐完自动消失 —— 这段时间里<b>地图、色标、时次滑块、
+播放、逐时次导出都能正常用</b>。只有"必须看全部历元"的操作（批量分析、趋势/周年场、
+时间序列）才会先补齐并显示进度；时间序列页在补齐完成前只画占位并写明原因，
+<b>不会为了让占位好看去读 1 GB</b>。</p>
+
+<p><b>左侧「数据摘要」里的数值范围 / RMS 是<u>当前时次</u>的</b>（行尾写明
+「（第 k/N 个时次）」），切时次时会跟着刷新。多时次文件对整块求范围既不直观
+（几十个完全不同的场被压成一个数字）又很贵；只有单时次数据才写「（整块）」。
+载入时的其它信息（时间轴跨度、网格尺寸、缺测个数、变量单位、提示）与当前时次无关，
+不随之变化。</p>
+
+<h3 id="s44">4.4　多时次（多历元）数据：一次解完</h3>
+<p>如果打开的数据带时间维（多时次网格）或有多列数值（散点的多历元），地图页上方会
+出现<b>时间行</b>与<b>播放行</b>：</p>
+<ul>
+<li><b>时次滑块</b>选一个时次；<b>◀ / ▶</b> 前后各一步；<b>范围</b>两个数字框限定
+    参与后续处理的时次区间（<b>「全部」</b>恢复）；当前时次的日期与十进制年显示在
+    右边。范围写反了软件会自动纠正，不会出现空窗口。</li>
+<li><b>▶ 播放</b>按设定帧率逐时次放动画，播到区间末端<b>自动停、不循环</b>；
+    <b>导出 GIF…</b>把整段动画存成一个 GIF 文件（不需要额外的视频软件）。
+    播的是<b>当前「显示」的那张图</b>。选「重建场 / 差值 / 输出场」而手上还没有逐历元
+    系数时，程序会<b>先一次解完全部历元</b>（进度条上有进度），之后每一帧只是从系数
+    <b>综合</b>出来 —— 不会出现"每帧都一样"或"播的还是原始图"。</li>
+<li><b>逐时次导出…</b>把区间内每个时次各存一个文件（网格 nc/grd、散点 csv），
+    可<b>暂停 / 继续 / 停止</b>；暂停时一个文件都不会写，不会留下半截文件。</li>
+</ul>
+<p><b>一次解完所有时次</b>：多时次数据点<b>「运行分析」</b>就会一次解完全部历元
+（也可以切到<b>逐历元诊断</b>页点<b>批量分析</b>，两者是同一个求解，结果<b>逐位相同</b>）：
+积分权重与法方程只组装一次，所以历元越多省得越多（实测 203 个历元、1° 全球、
+nmax = 60：逐历元点 200 多次约 13 秒，批量一次约 0.5 秒）。</p>
+<p><b>结果会缓存到本地</b>：逐历元系数写成数据文件旁边的
+<code>&lt;文件名&gt;.shkit-coeffs.npz</code>（数据目录不可写就退到用户缓存目录，并在
+状态栏说明）。键里含源文件的 size / mtime / <b>前 64 KB 的内容指纹</b>与<b>所有影响系数
+的参数</b>（含高斯平滑半径与输入/输出物理量），任一项不同就不算命中、重算并覆盖 ——
+所以不会出现"改了参数却拿到旧结果"。<b>键里不含路径</b>，数据连同旁边的缓存拷到别的
+目录仍然命中。下次打开同一份数据（同一套参数）直接读缓存，不用再等一次求解（进度条推到
+100% 并注明"本次未重算"）。</p>
+<p><b>缓存占多大、会不会一直涨</b>：数据旁边<b>一个数据集一份</b>（改参数覆盖同一个文件，
+单份上限 <b>256 MB</b>，超了不写盘并说明）；用户缓存目录（数据目录不可写时才用）是按
+"数据集 × 参数"散列的，<b>本来会越攒越多</b> —— 现在有 <b>512 MB 总量上限</b>，每次写盘后
+按最久未用自动删到 80%，并写明删了几份、释放多少。参考：nmax = 60 / 256 历元的一份实测
+<b>7.0 MB</b>。<b>文件 → 「本地缓存…」</b>可以看清占用并就地清理（删除当前数据的缓存 /
+清空用户缓存目录）—— <b>缓存只是省时间，删掉不影响已经算出来的结果</b>；参数面板底部
+常驻一行显示当前占用。</p>
+
+{FIG_MULTITIME}
+
+<h3 id="s45">4.5　逐历元诊断：把坏历元挑出来</h3>
+<p>批量分析完成后，表格里<b>每个历元一行</b>：序号、日期、相对 RMSE、
+C00、残差 RMS、可疑标记。相对残差明显偏大的历元会被标出来（用中位数绝对偏差
+判据），<b>但只高亮、不自动剔除</b> —— 要不要丢掉一个历元是科学判断，不是软件的
+默认动作；关掉「高亮离群历元」开关即可取消标记。</p>
+<p><b>点表格里的任意一行</b>会跳到那个历元的<b>地图</b>页，便于当场看它长什么样。
+表格上方还会写明「权重与法方程只算了几次」，以及一键把整张表导出成 CSV。</p>
+<p>分析在<b>独立子进程</b>里跑（默认开启，右侧面板有开关）：这样即使求解过程出问题，
+界面本身也不会被拖垮。若系统环境不支持，程序会<b>回退到线程并写明原因</b>，
+而不是悄悄换一种方式。</p>
+
+{FIG_EPOCHS}
+
+<h3 id="s46">4.6　时间序列：某个点（或某个区域）随时间怎么变</h3>
+<p>选<b>单点</b>或<b>区域</b>：</p>
+<ul>
+<li><b>单点</b>：给经纬度，程序吸附到最近的格点（或最近的点），并告诉你离所选位置
+    有多远 —— 避免「以为自己看的是那个点」。</li>
+<li><b>区域</b>：给一个经纬度范围，程序做<b>面积加权</b>平均，并写明这个范围覆盖了
+    球面的百分之几。区域平均是<b>覆盖面积内</b>的平均，不写覆盖率这个数没法解释。</li>
+</ul>
+<p>勾上「拟合」会叠加<b>趋势线</b>与<b>周年拟合</b>曲线，并给出趋势（每年变化多少）、
+周年振幅与<b>残差 RMS</b>；横轴是十进制年。拟合坐标用的是<b>真实经过时间</b>，
+历元不等间隔或有缺测都按真实时间处理，不会把它们当作等间隔序号。</p>
+
+{FIG_SERIES}
+
+<h3 id="s47">4.7　趋势与周年：把变化做成一张图</h3>
+<p>对<b>每个格点</b>做同样的时间拟合，给出：<b>趋势场</b>（每年），以及
+<b>每一个拟合了的周期</b>各一对 <b>振幅场</b> / <b>相位场</b>（峰值出现在一年中的第几天）。
+只拟合年周期时是 3 张图；勾上「含半年周期」就是 5 张（多出半年振幅场与半年相位场）。</p>
+<div class="tip">
+<b>相位图里的空白不是没算出来</b>：振幅接近 0 的地方「峰值在哪一天」没有意义
+（零正弦没有峰），所以程序<b>逐周期</b>把振幅小于该场 98 分位 5% 的格子<b>遮掉</b>，
+并在标题里写明遮了多少。这是有意的：一张填满噪声相位的图会被当成真信号读。
+</div>
+<p>页面顶部会写明条件数、拟合了哪些周期、以及「有多少个格点参与了拟合」。
+数据<b>没有日期时程序会拒绝拟合</b>并说明原因，而不是按序号假装等间隔。
+右上角的「海岸线」开关给这些图叠加随程序分发的离线海岸线（不联网，只影响显示）。</p>
+
+{FIG_TREND}
+
+<h3 id="s48">4.8　水平形变：质量迁移引起的水平位移</h3>
+<p>同样的系数还能给出水平地表位移。这一页是<b>可滚动的三行</b>（图按原尺寸画，不压扁）：</p>
+<table>
+<tr><th>行</th><th>内容</th></tr>
+<tr><td><b>北分量 u_N</b></td><td>向北为正；与东分量<b>共用同一个对称色标</b>，
+    这样两行才能横向比较（各画各的色标会读成"东向比北向小"）</td></tr>
+<tr><td><b>东分量 u_E</b></td><td>向东为正</td></tr>
+<tr><td><b>水平模 |u_h|</b></td><td>总位移大小（顺序色标，从 0 起），
+    <b>叠加矢量场</b>并带一把<b>比例尺</b>：只有箭头没有比例尺的矢量图没法定量读，
+    只有模又丢掉方向，所以两者放在同一张图上。箭头与左下角的比例尺文字都是
+    <b>白色</b>（箭头带一层很细的深色描边，落在亮色格子上也看得清）</td></tr>
+</table>
+<p><b>这一页在你点「计算水平形变」之前不会计算。</b>运行分析、批量分析、拖时次、播放
+都<b>不会</b>顺手把这张图算掉：它们只把旧图作废，并在页脚写明"点「计算水平形变」重算"。
+点了之后：计算在<b>后台线程 / 独立进程</b>里跑（进度条按"阶 m / 点块"报，随时可以点
+「停止」取消）—— 位系数的球面梯度不是逐阶乘法：规则网格走经度 FFT（实测 720×1440、
+nmax=60 是 <b>0.08 秒 / 历元</b>），但散点只能直接扫，同样规模要 <b>79 秒 / 历元</b>；
+换时次 / 重新分析 → 旧图作废，再点一次按当前历元重算；「海岸线」开关只<b>重画</b>，
+不重算。</p>
+<p><b>可以导出</b>（文件菜单两项，每个历元写 3 个文件：u_N / u_E / |u_h|，单位 m）：
+<b>导出水平形变（当前历元）…</b> 写当前时次的 3 个文件；<b>导出水平形变（时间窗内
+逐时次）…</b> 按时间窗口每个时次各 3 个文件，可<b>暂停 / 继续 / 停止</b>。网格写 .nc
+（一个文件一个分量），散点写 .csv（lon,lat,值）。<b>散点上会先给出耗时估算</b>
+（例如"每个历元约 79 秒，256 个历元约 5.6 小时"）让你决定是否继续。</p>
+<p><b>本页有自己的一套色标</b>，不跟随地图页的色标（地图页的量级常常是原始数据的，
+例如 EWH 的 ±700 cm；套到毫米级的形变分量上会把三张图压成一片颜色，看起来就是
+"画不出来"）。本页按形变自己的数据自动定 2–98%，两个分量对称于 0（可横向比较），
+水平模从 0 起。</p>
+<p>看这张图时注意三点：</p>
+<ul>
+<li><b>量级</b>：真实的 GRACE 全球质量迁移引起的水平位移在<b>毫米量级</b>；如果图上
+    出现米级数值，说明单位或系数口径有问题（软件会当场提示）。</li>
+<li><b>极点不画箭头</b>：极点上的「东向」没有定义，画出来的箭头是假的，所以直接把
+    ±90° 那一行排除掉并在标题里注明。</li>
+<li><b>逐历元</b>：形变是逐历元的量；有多历元系数（运行分析 / 批量分析都会一次解完）
+    时用当前历元那一片；一个历元都没有时会先一次解完整条序列，再算这张图。</li>
+</ul>
+
+{FIG_HORIZ}
+
+<h3>4.3　区域数据（重要）</h3>
+<div class="warn">
+如果数据只覆盖地球的一部分：
+<ul>
+<li>积分元请用 <b><code>delaunay</code></b>。<b>不要用 <code>voronoi</code></b> ——
+    球面 Voronoi 剖分永远铺满整个球面，区域边界点的胞会膨胀到球的对侧。</li>
+<li>分析完成后<b>一定要看诊断报告里的「覆盖率」</b>。它 &lt; 1 就说明你得到的是
+    「区域外为 0」的全球系数，而不是真实全球系数。</li>
+</ul>
+</div>
+{EX_VORONOI}
+{EX_LEAKAGE}
+<p>所以本程序对区域数据是<b>如实报告、不假装能反演</b>：它会给出覆盖率、
+截断泄漏的量级和中文警告，让你一眼看出「这不是全球解」。区域反演属于另一个层次的
+问题（数据本身在数学上欠定），不在本程序的范围里。</p>
+
+{FIG_Y_PROJ_MAP}
+<p>上面这张（图 10）就是区域数据的真实截图：长江流域 0/1 掩膜（142 846 点），
+<code>nmax = 12</code>、规则 <code>lattice</code>、方法 <code>projection</code>。
+注意色标只有 ±3×10⁻⁴ —— 区域数据得到的「全球系数」在区域外几乎处处为 0。</p>
+
+{FIG_Y_PROJ_REPORT}
+{FIG_Y_PROJ_SPEC}
+
+<div class="warn">
+<b>同一份区域数据，方法选错会得到什么？</b>把方法换成 <code>cg</code>（图 13、图 14）：
+<b>C00</b> 与点集加权均值不再一致（软件会明确报警），重建场整体偏移 ——
+这也是「一定要看诊断报告」的原因。
+</div>
+{FIG_Y_CG_REPORT}
+{FIG_Y_CG_MAP}
+
+<h2 id="s5">5　参数含义</h2>
+<table>
+<tr><th>参数</th><th>说明</th></tr>
+<tr><td><b>最大阶数 nmax</b></td><td>解到几阶，未知数 <code>(nmax+1)²</code> 个。
+    拿不准先用默认值跑一次：诊断报告里的<b>「推荐 nmax」</b>就是按点数与覆盖率
+    给出的经验上限</td></tr>
+<tr><td><b>积分元规则</b></td><td><b>默认 <code>auto</code></b>：按采样自动判断
+    （全球等经纬网格 <code>dh</code>／完整网格 <code>grid</code>／规则格网上的掩膜
+    <code>lattice</code>／全球散点 <code>voronoi</code>／区域散点
+    <code>delaunay</code>）。见 5.1</td></tr>
+<tr><td><b>估计方法</b></td><td><b>默认 <code>quadrature</code></b>（直接求积），
+    效率优先：一次加权投影，最快。可选 <code>iterative</code>（求积 + 迭代校正）、
+    <code>projection</code>（区域数据的正确目标：区域外按 0 处理的全球投影）、
+    <code>wlsq</code>（加权最小二乘）、<code>cg</code>（矩阵无关共轭梯度，省内存）。
+    ⚠️ 用 <code>quadrature</code> 时若采样不是好的求积规则会有混叠 —— 看诊断报告里的
+    <code>gram max|K−I|</code>（&gt; 1e-2 就改用 <code>wlsq</code> 或
+    <code>cg</code>）</td></tr>
+<tr><td><b>迭代校正次数</b></td><td>默认 <b>0</b>。<b>只在「估计方法 = iterative」
+    时可用</b>（其它方法下这一项是灰的）。实测在散点上 1 次就能把往返误差改善
+    ~250 倍，代价是多扫一遍数据</td></tr>
+<tr><td><b>权重归一化</b></td><td><code>auto</code> 推荐；<code>global</code> 强制
+    <code>Σw = 4π</code>（区域外为 0 的读法）；<code>region</code> 保留几何面积</td></tr>
+<tr><td><b>输入是</b></td><td>【正变换公式】载入的网格/散点是什么（<b>普通网格 /
+    geoid / EWH / 径向形变</b>，默认「普通网格」）。它决定
+    <code>C_nm = a_nm / f_u</code> 里的 <code>f_u</code>，<b>所以会改变导出的系数</b>，
+    见 5.2</td></tr>
+<tr><td><b>正则化</b></td><td>区域/病态数据必须用。<code>kaula</code> 是量纲无关的
+    逐阶幂律先验</td></tr>
+<tr><td><b>正则参数 alpha</b></td><td>留空 = 自动（L 曲线）；也可手填</td></tr>
+<tr><td><b>高斯平滑</b></td><td>各向同性高斯滤波半径（0.5 幅度半宽），0 = 不平滑。
+    分析完成后<b>直接乘到系数上</b>：导出的系数、逐阶谱、系数表、重建场/输出场都用
+    同一个平滑结果，只施加一次</td></tr>
+<tr><td><b>输出为</b></td><td>【反变换公式·输出场】输出场要换成哪个物理量
+    （<b>不换算 / EWH / geoid / 普通球谐系数 / 径向形变</b>），决定
+    <code>输出场 = C_nm × f_t</code> 里的 <code>f_t</code>。它<b>不改变导出的系数</b>
+    （永远是 <code>C_nm</code>），也<b>不改变重建场</b>；控件下方会实时显示两条公式的
+    实际数字</td></tr>
+<tr><td><b>在独立子进程中运行</b></td><td>默认<b>开启</b>。批量逐历元分析放在独立进程里
+    跑：求解出问题也不会连带界面。环境不支持时会<b>回退到线程并写明原因</b>，
+    不会悄悄换方式；两种方式的结果逐值相同</td></tr>
+</table>
+
+<h3>显示相关控件（都不影响分析结果）</h3>
+<table>
+<tr><th>控件</th><th>说明</th></tr>
+<tr><td><b>色标 · Auto Range</b></td><td>按 2% ~ 98% 分位自动定色标范围：比 min/max
+    稳健，不会被个别离群格点拉平整张图</td></tr>
+<tr><td><b>色标 · vmin / vmax</b></td><td>手填后点<b>应用色标</b>生效（作用于<b>地图页与趋势页</b>）；
+    <b>vcenter</b> 用来把「零」放在色标中间（例如正负异常图）。
+    ⚠️ 水平形变页有<b>自己的</b>色标，不跟随这里</td></tr>
+<tr><td><b>对称色标</b></td><td>强制 vmin = −vmax。手填了 vcenter 时它会自动取消并在
+    界面上说明谁在生效（避免「以为对称、其实不是」）</td></tr>
+<tr><td><b>海岸线 / 取消聚焦</b></td><td>海岸线来自随程序分发的离线数据，不需要联网
+    （地图上<b>只画海岸线、不画国界</b>）；
+    在地图上框选/滚轮放大后，用「取消聚焦」回到全球</td></tr>
+<tr><td><b>时次滑块 / 范围 / 全部</b></td><td>只决定「当前看哪个（哪些）时次」。
+    单时次分析用的是滑块那一个时次；批量分析与时间序列用「范围」；
+    左边的数据摘要里会写明时间跨度，**认不出日期时会明说**；
+    摘要里的数值范围 / RMS 也是**所看时次**的（行尾写明「第 k/N 个时次」）</td></tr>
+<tr><td><b>⏱ 时间轴信息</b></td><td>弹出时间轴摘要：历元数、时间来源、跨度、
+    间隔的中位/最小/最大、是否等间隔、疑似缺测段数与最长间隔</td></tr>
+<tr><td><b>帧率 / 导出 GIF</b></td><td>播放速度与动画导出。GIF 的帧数等于当前范围的
+    历元数</td></tr>
+<tr><td><b>逐时次导出</b></td><td>把范围内每个时次各写一个文件；可暂停/继续/停止</td></tr>
+</table>
+
+<div class="tip">
+<b>重建场 vs 输出场：</b><b>重建场</b>永远与输入同物理量（<code>C_nm × f_u</code>），
+所以能直接和原始网格逐点比对，差值图、残差 RMS 都用它；<b>输出场</b>是按「输出为」
+换算出来的另一个物理量（<code>C_nm × f_t</code>）。选「输出为 = 不换算」时两者是同一个场。
+</div>
+
+<h2 id="s51">5.1　积分元规则速查</h2>
+<table>
+<tr><th>规则</th><th>用在哪</th></tr>
+<tr><td><code>dh</code></td><td>全球等经纬网格（<code>nlon=2·nlat</code>），精确到
+    <code>nlat/2−1</code> 阶</td></tr>
+<tr><td><code>grid</code></td><td><b>任意经纬网格</b>（含区域、非等间隔），精确球带面积</td></tr>
+<tr><td><code>voronoi</code></td><td><b>全球准均匀散点</b>，球面 Voronoi 胞面积</td></tr>
+<tr><td><code>delaunay</code></td><td><b>区域散点</b>，球面 Delaunay 1/3</td></tr>
+<tr><td><code>uniform</code></td><td>等面积采样；<b>不应用于任意散点</b>
+    （实测差 10 倍以上）</td></tr>
+</table>
+
+<h2 id="s52">5.2　⚠️ 物理量与单位：两条公式，一个中间量</h2>
+<p>管道里只有两条公式，中间是<b>普通球谐系数</b> <code>C_nm</code>
+（= 无量纲重力位系数 <code>C_nm/S_nm</code>，GRACE Level-2 公布的那一套）：</p>
+<pre>正变换（输入是）：  输入网格 ──÷ f_u──&gt; C_nm = a_nm / f_u
+反变换一（永远）：   重建场 = C_nm × f_u   ← 与输入同物理量，可直接比对
+反变换二（输出为）： 输出场 = C_nm × f_t   ← 按「输出为」选的物理量
+
+导出的系数文件 = C_nm</pre>
+<p><code>a_nm</code> 是该网格<b>自身</b>的球谐系数（由数据与积分元唯一决定）。
+<code>f_u</code> 由「输入是」选的物理量决定：</p>
+<table>
+<tr><th>输入是</th><th>正变换公式 <code>f_u</code></th></tr>
+<tr><td><b>普通网格</b>（默认）</td><td>1（网格本身就是那套无量纲位系数场）</td></tr>
+<tr><td>水准面高 ΔN (geoid)</td><td><code>R = 6378136.46 m</code>（<b>常数</b>，不逐阶）</td></tr>
+<tr><td>等效水高 EWH</td><td><code>Aₙ = R·ρ̄/(3ρ_w) · (2n+1)/(1+k′ₙ)</code>（逐阶）</td></tr>
+<tr><td>径向形变 u_r</td><td><code>R·h′ₙ/(1+k′ₙ)</code>（逐阶；<code>h′₀ = 0</code>，
+    0 阶不可反推）</td></tr>
+</table>
+<p><b>所以改「输入是」会改变导出的系数。</b>同一块网格声明成 geoid 和声明成 EWH 是
+两个<b>不同的物理场</b>，除的因子不同。同一份数据的实测结果：</p>
+<pre>输入是                 导出 C[2,1]
+普通网格（默认）        -1.849162537627e-01   （f_u = 1，恒等）
+geoid                 -2.899220719443e-08   （÷ R）
+EWH                   -2.190855366513e-09   （÷ A₂）
+径向形变 u_r            → 报错：h′₀ = 0，第 0 阶信息已丢失</pre>
+<p>geoid 与 EWH 之差在 n=2 阶是 <code>A₂/R ≈ 13.23</code> 倍，而且<b>逐阶不同</b>
+（<code>Aₙ</code> 不是常数）：</p>
+<pre>n=1:  ewh/geoid = 1.8600e-01      n=3: 6.2467e-02
+n=2:  ewh/geoid = 7.5567e-02      n=6: 3.8056e-02     （跨 4.9 倍）</pre>
+<p><b>改「输出为」则既不改变导出的系数、也不改变重建场</b>，它只换<b>输出场</b>：</p>
+<pre>输入=EWH，输出=EWH        → 输出场 = 重建场（f_t = f_u，正反抵消）
+输入=EWH，输出=geoid      → 输出场 = C_nm × R（重建场仍是 EWH，一动不动）
+输入=EWH，输出=普通球谐系数 → 输出场 = C_nm（f_t = 1）</pre>
+<p>实测（同一份数据，逐个改「输出为」）—— 导出系数与重建场都逐位不变，
+只有输出场在动：</p>
+<pre>输入=ewh, 输出=ewh          导出 C[2,1] = -2.190855366513e-09  重建场 RMS = 2.206131e+00  输出场 RMS = 2.206131e+00
+输入=ewh, 输出=geoid        导出 C[2,1] = -2.190855366513e-09  重建场 RMS = 2.206131e+00  输出场 RMS = 8.274777e-01
+输入=ewh, 输出=普通球谐系数   导出 C[2,1] = -2.190855366513e-09  重建场 RMS = 2.206131e+00  输出场 RMS = 1.297366e-07</pre>
+<p>所以界面上是这样分工的：</p>
+<ul>
+<li><b>「输入是」决定导出什么系数</b>（正变换公式 <code>f_u</code>）；</li>
+<li><b>重建场</b>永远 = <code>C_nm × f_u</code>，与输入同物理量，用来做差值图与残差 RMS；</li>
+<li><b>「输出为」决定输出场是什么物理量</b>（反变换公式 <code>f_t</code>）；</li>
+<li>只做「网格 → 系数 → 网格」时，选「输出为 = 不换算」即可：<code>f_t = f_u</code>，
+    输出场就是重建场，正反互相抵消；</li>
+<li>声明矛盾（例如「普通标量 → EWH」）会抛出明确的中文错误，而不是给你一个错 1e7 倍的
+    结果；</li>
+<li>控件正下方有<b>实时预览</b>，把两条公式都写成具体数字：</li>
+</ul>
+<pre>正变换（÷ f_u，n=1 档 f_u = 3.42909e+07）：网格系数 1.32588 → 导出 C[1,1] = 3.86658e-08
+重建场（× f_u = 3.42909e+07）：该点 = 1.32588（= 原网格值，与输入同物理量，可直接比对）
+输出场（× f_t = 6.37814e+06，相对输入 × 0.186001）：该点 = 0.246616</pre>
+<p>换「输入是」时第一行的 <code>f_u</code> 会当场改变（换成 geoid 就变成
+<code>6.37814e+06</code>）；选了具体的「输出为」后第三行会给出该物理量的数字与相对倍数。
+每次分析完成后也会刷新。完整推导与常见错误清单见随程序的
+<code>物理量与单位换算</code>文档。</p>
+
+{EX_ROUNDTRIP}
+{EX_SHANNON}
+{EX_CAPFLOOR}
+{EX_NOISE}
+<p class="meta">图 20 ~ 图 23 是几组<b>实测结论配图</b>：它们把「算法选哪条」「阶数取多少」
+这两件事画了出来，选参数时可以对照着看。</p>
+
+<h2 id="s6">6　怎么读诊断报告</h2>
+<p>诊断报告页签逐项列出，关键四项：</p>
+<table>
+<tr><th>指标</th><th>怎么看</th></tr>
+<tr><td><b>求积完备性 max|K−I|</b></td><td>&lt; 1e-2 ⇒ 采样近似正交，纯求积就够；
+    明显大于 ⇒ 求积有混叠，<b>必须用最小二乘</b></td></tr>
+<tr><td><b>覆盖率</b></td><td>= <code>sum(w)/4π</code>。&lt; 0.999 ⇒ 只覆盖部分球面，
+    结果是「区域外为 0」的全球系数，速度要谨慎</td></tr>
+<tr><td><b>条件数</b></td><td>&gt; 1e8 ⇒ 双精度已耗尽，必须降阶或加正则化</td></tr>
+<tr><td><b>推荐 nmax</b></td><td>按点数与覆盖率给的经验上限；比它高就是在解噪声</td></tr>
+</table>
+<p>报告底部还会给出中文警告（覆盖率不足、超定比 &lt; 2、Shannon 数过小、条件数过高），
+有警告时用红色列出。</p>
+{FIG_REPORT}
+{FIG_SPECTRUM}
+{FIG_COEFFS}
+
+<h2 id="s7">7　导出</h2>
+<table>
+<tr><th>入口</th><th>格式</th></tr>
+<tr><td>文件 → 导出球谐系数</td><td><code>.sh/.txt/.csv</code>（<b>三角布局，与
+    gridSHconvert / m2py 兼容</b>）、<code>.gfc</code>（ICGEM/GFZ）、
+    <code>.npy</code>、<code>.npz</code></td></tr>
+<tr><td>文件 → 导出重建场（与输入同量）</td><td>网格：<code>.nc</code> /
+    <code>.grd</code>；散点：<code>.csv</code> / <code>.txt</code> /
+    <code>.npy</code></td></tr>
+<tr><td>文件 → 导出输出场（按「输出为」）</td><td>同上；量纲由「输出为」决定</td></tr>
+<tr><td>文件 → 导出诊断报告</td><td><code>.json</code>（可程序化处理）/
+    <code>.md</code></td></tr>
+<tr><td>文件 → 导出水平形变（当前历元 / 时间窗内逐时次）</td><td>每个时次
+    <b>3 个文件</b>：<code>u_N</code> / <code>u_E</code> / <code>|u_h|</code>
+    （单位 m）。网格写 <code>.nc</code>（变量名 <code>uN</code>/<code>uE</code>/
+    <code>umag</code>）、散点写 <code>.csv</code>（<code>lon,lat,值</code>）；
+    逐时次那条可暂停 / 继续 / 停止</td></tr>
+<tr><td>数值表页 → <b>复制</b> / <b>导出 CSV</b></td><td>整块场的数值表。格点数超过
+    3 万时自动抽稀（<b>并在页面上写明抽样步长</b>，免得把抽稀表当成全分辨率）</td></tr>
+<tr><td>地图页 → <b>导出 GIF…</b></td><td>当前时次范围的动画；帧数 = 范围内的历元数
+    （不需要额外的视频软件）</td></tr>
+<tr><td>地图页 → <b>逐时次导出…</b></td><td>范围内每个时次各写一个文件：
+    网格 <code>.nc</code> / <code>.grd</code>、散点 <code>.csv</code>；
+    可暂停 / 继续 / 停止</td></tr>
+<tr><td>逐历元诊断页 → <b>导出 CSV</b></td><td>逐历元诊断表（日期、相对 RMSE、C00、
+    残差 RMS、可疑标记）</td></tr>
+<tr><td>时间序列页 → <b>导出 CSV</b></td><td>当前曲线（时次 + 数值）</td></tr>
+</table>
+<p><code>.gfc</code> 是单历元格式。多时次数据导出 <code>.gfc</code> 时，软件用的是
+<b>当前时次</b>；需要全部时次请选 <code>.npz</code>，或用上面的「逐时次导出」。</p>
+
+<h2 id="s8">8　常见问题</h2>
+<p><b>Q：为什么中文显示成方框？</b><br>
+A：绘图库自带的字体没有中文字形。程序启动时会自动挑选系统里安装的中文字体
+（Microsoft YaHei / SimHei / Noto Sans CJK / PingFang 等）；如果机器上一个都没有，
+装一款中文字体即可。</p>
+
+<p><b>Q：地图上没有海岸线？</b><br>
+A：检查「海岸线」复选框。海岸线数据随程序分发，不需要联网。</p>
+
+<p><b>Q：地图上出现「飞线」（横穿整幅图的长直线）？</b><br>
+A：这是经度跨越 ±180° 时折线被错误连接造成的。本程序已经在渲染前检测相邻点的经度差，
+凡超过 180° 的地方插入断点，所以正常数据不会出现；如果你自己处理过的数据仍有飞线，
+通常是经度用了 <code>0…360</code> 而纬度范围与之不匹配，把经度归一到
+<code>−180…180</code>（或反过来统一）即可。</p>
+
+<p><b>Q：分析跑很久，能停吗？</b><br>
+A：能。「停止」是<b>协作式取消</b>：程序会在阶数循环、法方程组装、迭代求解处检查取消
+标志。已经进入的单次大规模数值运算无法中断，所以可能要等当前一步结束。</p>
+
+<p><b>Q：nmax 设很大但结果很差？</b><br>
+A：看诊断报告的「推荐 nmax」和「条件数」。阶数超过采样能支撑的上限时，解会去拟合噪声，
+系数范数会爆炸。</p>
+
+<p><b>Q：区域数据怎么都做不出全球系数？</b><br>
+A：这是<b>原理性限制</b>，不是软件问题。区域数据在数学上欠定；一个占球面 4.3% 的球冠
+连 degree-4 的场都恢复不了（低阶场弥散在全球，集中因子只等于面积占比）。所以本程序
+只给「区域外为 0」的全球系数 + 覆盖率与泄漏量级，并明确警告；真正的区域反演需要另
+一套方法，不在本程序范围内。</p>
+
+<p><b>Q：「批量分析」和「逐个时次点运行分析」结果一样吗？</b><br>
+A：一样，<b>逐位相同</b>。批量只是把积分权重与法方程只组装一次，所以快得多；
+每个历元的方程与单次分析完全一致。它跑在独立子进程里，出问题也不影响界面。</p>
+
+<p><b>Q：为什么我的结果和别人的产品整体差一个常数倍（例如 3.5 倍）？</b><br>
+A：先查<b>归一化口径</b>，不要急着怀疑算法。同一个物理场，有人用
+「4π 归一化」，有人把归一化因子折进系数或公式里，两边的数就会整体差
+√(4π) ≈ 3.545 倍（实测就是 3.54）；这属于<b>约定差异</b>，不是谁算错了。
+判断方法很简单：<b>图形应该高度相似（相关系数接近 1），只是整体标度不同</b>。
+如果图形也对不上，那才是物理或处理口径的问题。</p>
+
+<p><b>Q：趋势与周年页里的相位图为什么有大片空白？</b><br>
+A：那里是<b>故意留白</b>。振幅接近 0 的格点上「峰值出现在第几天」没有意义，
+程序把振幅很小的格子遮掉并在标题里写明遮了多少。想看到全部格子可以调低这个门槛，
+但请记住：那些格子的相位是噪声，不是信号。</p>
+
+<p><b>Q：时间序列曲线上的点比我数据里的历元少？</b><br>
+A：那一段范围内的历元没有全部参与 —— 缺测历元（整列无效值）会被排除，页面会写明
+实际用了多少个历元。程序不会把缺测当成 0，也不会把它当成等间隔的一个点。</p>
+
+<p><b>Q：结果量级看起来差了 100 倍（例如形变 RMS 是 86 mm 而不是 0.9 mm）？</b><br>
+A：先看左侧数据摘要里的「<b>变量单位</b>」。<b>SHKit 的正变换、反变换以及各物理量之间的
+换算全都是线性的</b>，所以<b>输入什么单位，输出就是同一套单位的倍数</b> —— 往返
+（原始 ↔ 重建）、EWH ↔ geoid ↔ 形变之间的比例<b>都不受单位影响，不需要做任何换算</b>。
+唯一与单位有关的是<b>打印出来的绝对物理量</b>（<code>m</code> / <code>mm</code> 标签）和
+「真实 GRACE 应在 mm 级」这类<b>按米写的量级自检</b>：文件声明的若是 <code>cm</code>，
+这些数字要按 cm 读（<b>÷100 才是米</b>）。水平形变页遇到这种情况会在数值后面写明。</p>
+
+<p><b>Q：播放动画（或拖动时次）时，只有「原始场」在变？</b><br>
+A：那说明手上只有"某一个历元"的系数。现在<b>多时次数据点一次「运行分析」就解完全部
+历元</b>（也可以到「逐历元诊断」页点「批量分析」，两者同一个求解），之后重建场/差值/
+输出场会随滑块与播放逐历元重算，标题上标出用的是哪个历元；逐历元系数还会<b>缓存到
+本地</b>，下次打开同一份数据（同一套参数）直接读，不必再解一遍。</p>
+
+<p><b>Q：「显示」切到重建场，图却还是原始数据（或者播放时每一帧都一样）？</b><br>
+A：这是修掉的一个真问题，现在有四条保证：<br>
+① <b>一次解完，不逐个补算</b>：需要逐历元系数时（切「显示」、播放、导出）程序
+<b>一次解完全部历元</b> —— 固定成本（积分元、法方程）只付一次，每历元边际成本毫秒级，
+所以"解一个"和"解全部"几乎一样贵；解的过程显示在进度条上，提示行写明"正在一次解完
+N 个历元…"；<br>
+② <b>没有系数就不画</b>：还没有系数时，地图上写的是"第 k 个历元的…还没有系数，正在
+一次解完 N 个历元…"，<b>不会</b>拿原始数据冒充；<br>
+③ <b>不拿别的历元顶替</b>：换到别的历元一律按该历元的系数重算，算完自动换成该历元的图；<br>
+④ <b>每一帧都是它自己那个历元</b>：不会把同一张图重复放或拿原始图顶上。
+「导出 GIF…」与「逐时次导出」都会先一次解完再导；逐时次导出写出的每个历元文件里是
+<b>它自己</b>的场（不会把同一个场写给每个历元）。</p>
+
+<p><b>Q：结果缓存在哪？会不会"改了参数拿到旧结果"？会不会无限涨？</b><br>
+A：缓存写在数据文件旁边（<code>&lt;文件名&gt;.shkit-coeffs.npz</code>）；数据目录不可写时
+退到用户缓存目录，并在状态栏写明。键包含源文件的 size / mtime / <b>前 64 KB 的内容指纹</b>
+与<b>全部影响系数的参数</b>（含<b>高斯平滑半径</b>与输入/输出物理量），任一项不同就不算
+命中、直接重算并覆盖 —— 所以不会串。<b>键里不含路径</b>，所以数据（连同旁边的缓存）
+拷到别的目录/别的机器仍然命中。命中时状态栏与「逐历元诊断」页都会写明"这是本地缓存、
+不是本次重算"，进度条推到 100% 并注明"本次未重算"。</p>
+
+<p><b>载入数据时，如果参数与缓存里的不一致，界面会先把参数（含「输入是」）切回缓存
+那一套</b>，并在状态栏与参数面板写明"已按这份缓存切回参数"—— 于是点「运行分析」直接读
+缓存、不重算。（「输入是」是公式的一部分：同一块网格声明成 geoid / EWH / geopotential
+除的因子不同、系数也不同，所以它必须在缓存键里；正因为如此，默认值与你上次用的不一致
+时就需要自动切回来。）</p>
+
+<p><b>有缓存时点「运行分析」会先问你一句</b>（「批量分析」同理）：对话框写明这份缓存
+写在哪儿、多大、哪时候写的、用的是哪套参数、与当前界面参数是否一致，然后给三个选择
+——<b>［直接读缓存（不重算）］</b>（默认）、［重新计算（覆盖缓存）］、［取消］。选重算会
+按当前界面参数解一遍整条序列并把缓存覆盖成新的；选取消则缓存不读、也不重算，内存里的
+结果保持原样。<b>导出 GIF 与切视图时的自动补算不会弹这个框</b>（那里插一个模态框只会把
+人卡住），它们直接用缓存并在状态栏说明。想用别的参数：改完直接点「运行分析」，会按新
+参数重算并覆盖缓存（这时不弹框 —— 你刚刚设的参数就是你要的）。</p>
+
+<p>增长性分两处，<b>都有上限</b>：数据旁边<b>一个数据集一份</b>（改参数覆盖同一文件，
+单份上限 <b>256 MB</b>，超了不写盘并说明）；用户缓存目录是"数据集 × 参数"一份、
+本来会一直涨，现在总量上限 <b>512 MB</b>，每次写盘后按最久未用自动删到 80% 并写明删了
+几份。参考大小：nmax = 60 / 256 历元的一份实测 <b>7.0 MB</b>。<br>
+<b>文件 → 「本地缓存…」</b>显示当前数据那份缓存的大小与时间、用户缓存目录的份数/总量，
+可就地清理（删除当前数据的缓存 / 清空用户缓存目录）—— <b>缓存只是省时间，删掉不影响
+已经算出来的结果</b>，下次「运行分析」会重算并重写。参数面板底部常驻一行显示占用，
+并<b>如实说明能不能命中</b>：如果旁边那份缓存与当前文件/参数对不上，它会直说"不会命中，
+会重算并覆盖"，不会让你以为不用等。</p>
+
+<p><b>Q：点了「运行分析」前几秒进度条不动，是在卡吗？</b><br>
+A：不是。有两段<b>本来就没有可信百分比</b>的工作：① 懒加载的大文件要把全部时次读进来
+（真实 mascon 实测约 3 秒）；② 独立进程模式下要把数据交给子进程。这两段显示的是
+<b>会自己动的忙碌条</b> + 一句话说明（"正在读取全部时次 128/256…""正在把 256 个历元的
+数据交给独立进程…"），求解器一报出真实百分比就自动切回百分比条。空闲时进度条直接隐藏，
+不留一根 0% 的条；缓存命中时推到 100% 并写明"本次未重算"。</p>
+
+<h2 id="s9">9　作者与联系方式</h2>
+<table>
+<tr><th>作者</th><td>{mw.AUTHOR_NAME_CN}（{mw.AUTHOR_NAME_EN}）</td></tr>
+<tr><th>单位</th><td>{mw.AUTHOR_AFFILIATION_CN}<br>{mw.AUTHOR_AFFILIATION_EN}</td></tr>
+<tr><th>邮箱</th><td><a href="mailto:{mw.AUTHOR_EMAIL}">{mw.AUTHOR_EMAIL}</a></td></tr>
+<tr><th>电话</th><td>{mw.AUTHOR_PHONE}</td></tr>
+<tr><th>公众号</th><td>{mw.WECHAT_ACCOUNT}（{mw.WECHAT_ACCOUNT_EN}），微信扫一扫：</td></tr>
+</table>
+<p align="center"><img src="{mw.WECHAT_QR_FILENAME}" alt="课题组公众号二维码"></p>
+<p class="meta">使用中如发现问题、或有功能建议与数据方面的疑问，欢迎通过邮箱或公众号
+反馈。</p>
+
+<h2 id="s10">10　致谢</h2>
+<p>本程序使用了若干开源软件组件，并在开发过程中使用了 Natural Earth 110m 海岸线数据
+与 PREM 载荷勒夫数表（Wang et al. 2012）。这些组件与数据的著作权归各自作者所有，
+许可全文随程序分发，可在 <b>帮助</b> 菜单中查看。</p>
+<p class="meta">本软件仅供科研与教学使用。软件按「现状」提供，作者不对使用结果作任何
+明示或暗示担保。</p>
+
+</body>
+</html>
+"""
+
+
+# --------------------------------------------------------------------- 回读校验
+def verify(html: str) -> None:
+    from html.parser import HTMLParser
+
+    from PySide6.QtGui import QTextDocument
+
+    # --- 结构：标签必须闭合、目录锚点必须落到真实 id 上
+    void = {"img", "br", "hr", "meta", "input", "link", "area", "base", "col",
+            "embed", "source", "track", "wbr"}
+
+    class _Balanced(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack: list = []
+            self.errors: list = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in void:
+                self.stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in void:
+                return
+            if self.stack and self.stack[-1] == tag:
+                self.stack.pop()
+            else:
+                self.errors.append(tag)
+
+    parser = _Balanced()
+    parser.feed(html)
+    parser.close()
+    check("HTML 标签闭合平衡", not parser.errors and not parser.stack,
+          f"未闭合 {parser.stack[:4]}，错配 {parser.errors[:4]}")
+
+    ids = set(re.findall(r'\bid="([^"]+)"', html))
+    anchors = re.findall(r'href="#([^"]+)"', html)
+    check("目录锚点全部指向真实小节", anchors and all(a in ids for a in anchors),
+          f"{len(anchors)} 个锚点")
+
+    check("有 <!DOCTYPE html>", html.lstrip().startswith("<!DOCTYPE html>"), "")
+    check("声明 UTF-8", 'charset="utf-8"' in html, "")
+    check("含内嵌 <style>", "<style>" in html and "</style>" in html, "")
+    check("无外部 CSS / JS", "<link" not in html.lower()
+          and "<script" not in html.lower() and "http://" not in html, "")
+
+    srcs = re.findall(r'src="([^"]+)"', html)
+    missing = [s for s in srcs if not os.path.isfile(os.path.join(HERE, s))]
+    check("每个 <img src> 都在磁盘上", not missing,
+          f"{len(srcs)} 张图，缺失：{missing or '无'}")
+    check("图片不写死宽度、题目居中（由 GuideDialog 按视口定尺寸）",
+          'width="' not in "".join(re.findall(r'<img[^>]*>', html))
+          and html.count('<p align="center">') >= len(srcs),
+          f"{len(srcs)} 张图，{html.count('<p align=\"center\">')} 个居中块")
+    check("不再使用 Qt 不认的 <figure>/<figcaption>",
+          "<figure" not in html and "figcaption" not in html, "")
+
+    # --- 面向第三方使用者的内容边界：这些东西一律不能出现在发行版说明书里
+    banned = {
+        "Slepian / 局部化": ("Slepian", "slepian", "局部化"),
+        "命令行 / CLI 章节": ("命令行", "shkit analyze", "shkit nmax",
+                              "shkit synth", "shkit weights", "CLI"),
+        "开发者内容（从源码运行 / 打包）": ("从源码运行", "pip install", "PyInstaller",
+                                            "--onedir", "packaging/", "build_guide",
+                                            "check_licensing"),
+        "打包与 GPL-only 合规要点": ("GPL-only", "PyQt5", "Qt Charts",
+                                     "不构成法律意见", "闭源商用"),
+        "内部文件路径": ("docs/", "licenses/", "tests/", "SHKit方法总结",
+                         ".py", "方案调研"),
+        "内部实现细节（算法/函数名）": ("prepare_polyline", "shkit.analysis",
+                                       "Python API", "matplotlib", "PySide6",
+                                       "NumPy", "SciPy"),
+    }
+    for label, words in banned.items():
+        hits = [w for w in words if w in html]
+        check(f"说明书不含{label}", not hits, f"命中：{hits}" if hits else "干净")
+
+    body = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+    check("正文没有未替换的模板花括号",
+          "{" not in body and "}" not in body,
+          f"{body.count('{') + body.count('}')} 个")
+
+    # QTextBrowser 实际渲染一遍：图片能不能解析、正文有没有丢
+    # （QTextDocument 没有 setSearchPaths，用 base URL 指向 docs/ 等效）
+    doc = QTextDocument()
+    doc.setBaseUrl(QUrl.fromLocalFile(HERE + os.sep))
+    doc.setHtml(html)
+    text = doc.toPlainText()
+    check("QTextBrowser 能渲染出正文（> 6000 字符）", len(text) > 6000,
+          f"{len(text)} 字符")
+    ok_text = all(k in text for k in ("使用说明", "输入是", "普通网格", "诊断报告",
+                                      "积分元", "公众号"))
+    check("关键小节都在渲染结果里", ok_text, "标题 / 参数 / 报告 / 公众号")
+
+    imgs = doc.resource(QTextDocument.ResourceType.ImageResource,
+                        QUrl(f"{IMG_DIRNAME}/gui_01_demo_main.png"))
+    check("Qt 能从相对路径解析图片", imgs is not None and not imgs.isNull(),
+          "docs/使用说明_img/gui_01_demo_main.png")
+    qr = doc.resource(QTextDocument.ResourceType.ImageResource,
+                      QUrl(mw.WECHAT_QR_FILENAME))
+    check("说明书里的公众号二维码能解析", qr is not None and not qr.isNull(),
+          mw.WECHAT_QR_FILENAME)
+
+
+# -------------------------------------------------------------------------- main
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--no-shots", action="store_true",
+                    help="跳过截图（图片必须已存在）")
+    ap.add_argument("--only-panels", action="store_true",
+                    help="只抓左右面板特写（面板用更高的 QT_SCALE_FACTOR）")
+    ap.add_argument("--only-dialogs", action="store_true",
+                    help="只抓对话框截图（就按 --scale）")
+    ap.add_argument("--trim", action="store_true",
+                    help="把使用说明_img/ 里配图四周的白边裁掉（示例配图白边很宽）")
+    ap.add_argument("--skip-verify", action="store_true",
+                    help="只写 HTML / 只抓图，不做回读校验")
+    ap.add_argument("--scale", type=float, default=SHOT_SCALE,
+                    help=f"对话框抓图用的 Qt 缩放因子（默认 {SHOT_SCALE}）")
+    args = ap.parse_args()
+
+    # 必须在 QApplication 之前设好：Qt 在构造 QApplication 时读它。
+    os.environ["QT_SCALE_FACTOR"] = str(args.scale)
+
+    app = QApplication.instance() or QApplication([])
+    app.setFont(QFont("SimHei", 10))
+    print(f"抓图缩放因子 QT_SCALE_FACTOR = {args.scale}")
+    if args.trim:
+        trim_guide_images()
+        return 0
+
+    if args.only_panels:
+        capture_panel_shots()
+    elif args.only_dialogs:
+        capture_dialog_shots()
+    else:
+        # HTML 先落盘：GuideDialog 打开时读的就是它，截图才不会拍到上一版。
+        html = build_html()
+        with open(OUT_PATH, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        print(f"\n写出 {OUT_PATH}  ({os.path.getsize(OUT_PATH)/1024:.1f} kB)")
+        if not args.no_shots:
+            capture_dialog_shots()
+        if not args.skip_verify:
+            verify(html)
+
+    npass = sum(1 for ok, _, _ in RESULTS if ok)
+    print(f"\n{npass}/{len(RESULTS)} checks passed")
+    return 0 if npass == len(RESULTS) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

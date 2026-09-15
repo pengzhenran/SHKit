@@ -1,0 +1,9 @@
+# 开发工作区里由测试 / 探针脚本生成的临时日志（不进仓库）
+out/_*.log
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# 打包中间产物（统一放到项目外的构建根目录）
+build/
+dist/

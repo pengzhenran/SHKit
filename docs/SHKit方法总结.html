@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHKit 方法总结：从球谐目标函数到长江掩膜案例</title>
+<style>
+:root{--fg:#1c2733;--muted:#5b6b7c;--line:#d7dee5;--bg:#fff;
+--accent:#2b5f8c;--ok:#2b7a4b;--warn:#a33b3b;--amber:#c98a2b;--soft:#f4f7fa;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:15px/1.75 "Microsoft YaHei","PingFang SC","Hiragino Sans GB","Source Han Sans SC",sans-serif;}
+header{background:linear-gradient(180deg,#1f4a70,#2b5f8c);color:#fff;padding:34px 28px 26px}
+header h1{margin:0 0 6px;font-size:27px;letter-spacing:.4px}
+header p{margin:2px 0;color:#d6e4f0;font-size:13.5px}
+.wrap{display:flex;align-items:flex-start;gap:26px;max-width:1220px;margin:0 auto;padding:0 22px}
+nav#toc{position:sticky;top:12px;flex:0 0 246px;max-height:calc(100vh - 30px);
+ overflow:auto;background:var(--soft);border:1px solid var(--line);border-radius:10px;
+ padding:14px 14px 16px;font-size:13px;margin:22px 0}
+nav#toc h2{font-size:13px;margin:0 0 8px;color:var(--muted);letter-spacing:.6px;
+ text-transform:uppercase}
+nav#toc a{display:block;color:var(--accent);text-decoration:none;padding:3px 0;
+ border-bottom:1px dotted transparent}
+nav#toc a:hover{text-decoration:underline;background:#e8eff6}
+nav#toc a.sub{padding-left:14px;color:#4a5b6c;font-size:12.4px}
+main{flex:1 1 auto;min-width:0;padding:22px 0 70px}
+section{margin:0 0 40px;scroll-margin-top:14px}
+h2{font-size:21px;border-left:5px solid var(--accent);padding:2px 0 2px 11px;
+ margin:34px 0 14px}
+h3{font-size:16.5px;margin:24px 0 9px;color:#24405a}
+h4{font-size:14.6px;margin:18px 0 7px;color:#33506b}
+p{margin:9px 0}
+ul,ol{margin:9px 0 9px 22px;padding:0}
+li{margin:4px 0}
+code{background:#eef2f6;border:1px solid #e0e7ee;border-radius:4px;padding:.5px 5px;
+ font-family:Consolas,"Courier New",monospace;font-size:12.8px}
+pre{background:#f7f9fb;border:1px solid var(--line);border-left:3px solid var(--accent);
+ border-radius:6px;padding:11px 13px;overflow:auto;font-size:12.9px;line-height:1.6;
+ font-family:Consolas,"Courier New",monospace}
+table{border-collapse:collapse;width:100%;margin:13px 0;font-size:13.4px}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+th{background:#eef3f8;font-weight:600}
+tbody tr:nth-child(even){background:#fafcfd}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;
+ font-family:Consolas,"Courier New",monospace;font-size:12.7px}
+figure{margin:20px 0;padding:12px;background:#fbfcfe;border:1px solid var(--line);
+ border-radius:9px}
+figure img{width:100%;height:auto;display:block;border-radius:5px}
+figcaption{margin-top:9px;font-size:13.2px;color:#3d4d5d;line-height:1.7}
+figcaption b{color:var(--fg)}
+.figrow{display:flex;gap:14px;flex-wrap:wrap}
+.figrow figure{flex:1 1 380px}
+.note,.warn,.key{border-radius:8px;padding:11px 14px;margin:14px 0;font-size:13.8px}
+.key{background:#eef7f1;border-left:4px solid var(--ok)}
+.warn{background:#fdf0f0;border-left:4px solid var(--warn)}
+.note{background:var(--soft);border-left:4px solid var(--accent)}
+.key h4,.warn h4,.note h4{margin:0 0 5px;color:inherit}
+.formula{background:#f7f9fb;border:1px dashed #c3d0dc;border-radius:7px;
+ padding:11px 14px;margin:12px 0;font-size:14.6px;line-height:2;
+ font-family:"Cambria Math",Cambria,Georgia,serif;overflow-x:auto}
+.formula .lbl{color:var(--muted);font-size:12.6px;font-family:inherit}
+.small{font-size:12.6px;color:var(--muted)}
+.tag{display:inline-block;font-size:11.6px;padding:1px 7px;border-radius:20px;
+ border:1px solid var(--line);background:#fff;color:var(--muted);margin-left:5px}
+.tag.ok{border-color:#a9d3ba;background:#eef7f1;color:#20603c}
+.tag.bad{border-color:#e0b3b3;background:#fdf0f0;color:#8c2f2f}
+.tag.mid{border-color:#e6cf9e;background:#fdf7ea;color:#8a5f16}
+footer{border-top:1px solid var(--line);padding:16px 26px 34px;color:var(--muted);
+ font-size:12.7px;text-align:center}
+a{color:var(--accent)}
+@media (max-width:960px){.wrap{flex-direction:column}nav#toc{position:static;width:100%;
+ flex:0 0 auto}}
+</style>
+</head>
+<body>
+<header>
+<h1>SHKit 方法总结：从球谐目标函数到长江掩膜案例</h1>
+<p>配套文档 · 全部数值由 <code>docs/_summary_measure.py</code> 在本机实时计算得出</p>
+<p>球谐展开采用 4π 归一化、无 Condon-Shortley 相位；半波长分辨率 πR/n</p>
+</header>
+<div class="wrap"><nav id="toc"><h2>目录</h2><a class="" href="#s1">1. 文档目的与核心结论</a><a class="" href="#s2">2. 数学基础</a><a class="" href="#s3">3. 积分元（权重规则）</a><a class="" href="#s4">4. 估计方法：目标函数与适用条件</a><a class="sub" href="#s4a">4.1 统一视角</a><a class="sub" href="#s4b">4.2 quadrature</a><a class="sub" href="#s4c">4.3 iterative</a><a class="sub" href="#s4d">4.4 projection</a><a class="sub" href="#s4e">4.5 wlsq / cg</a><a class="sub" href="#s4f">4.6 正则化</a><a class="sub" href="#s4g">4.7 slepian</a><a class="sub" href="#s4h">4.8 auto 选路</a><a class="" href="#s5">5. 诊断量与守卫</a><a class="" href="#s6">6. 算法与实现</a><a class="" href="#s7">7. 试验一：示例数据</a><a class="" href="#s8">8. 试验二：全球 0/1 帽</a><a class="" href="#s9">9. 试验三：长江掩膜（重点）</a><a class="" href="#s10">10. 方法选择速查表</a><a class="" href="#s11">11. 优缺点与适用场景</a><a class="" href="#s12">12. 复现</a><a class="" href="#s13">13. 已知限制</a></nav><main><section id="s1">
+<h2>1. 文档目的与核心结论</h2>
+<p>本文说明 SHKit 把「散点/网格 → 球谐系数」这件事做成了什么，重点回答三个问题：
+<b>每个方法最小化的目标函数是什么</b>、<b>它在什么条件下才成立</b>、<b>什么时候它会给出
+看起来正确但物理上错误的结果</b>。全部结论都附有本机实时计算的数值与图。</p>
+
+<div class="key"><h4>核心结论速览（只读这一段也够）</h4>
+<ol>
+<li><b>两个目标函数的定义域不同，这是全部问题的根源。</b>零填充全球 L2 投影的积分域是
+<b>整个球面</b>（区域外 f≡0 也进入目标函数）；加权最小二乘的求和域<b>只有测点</b>。
+二者仅在采样构成有效求积规则（K≈I）时才等价。</li>
+<li><b>区域数据上“迭代把重建误差压到零”不是成功，而是警报。</b>长江掩膜实测：求积残差
+9.9966e-01（<b>这就是截断泄漏</b>），而 CG 收敛后残差塌到
+7.162e-06，同时 C<sub>00</sub> 从几何真值
+2.0680188857e-06 膨胀到 2.376430e-02，即 <b>11,491.3 倍</b>，
+隐含 1-set 面积 12,148,497 km²（比中国还大）。</li>
+<li><b>对 0/1 指示场，C<sub>00</sub> 是几何事实，不是自由参数。</b>它必须等于
+"为 1 的面积占比”。长江掩膜的三套积分元给出三套答案，只有 <code>lattice</code> 是对的：
+2.0680188857e-06（1,057.19 km²）；
+<code>grid</code> 偏大 4.59%；
+<code>delaunay</code> 用球面凸包，偏大 69.98 倍。</li>
+<li><b>积分元选错不只是“尺度偏一个常数”。</b><code>grid</code> 与 <code>lattice</code> 的逐点权重比
+在 44 个点上超过 1.1 倍、最大
+<b>5e+03 倍</b>，std/mean =
+13.6；所以重建的<b>形状</b>也变
+（L=12 图样相关 0.986068）。</li>
+<li><b>截断泄漏有硬地板，迭代算法尊重它。</b>全球 0/1 帽（覆盖率 1.000000）实测
+L=2..40 的残差 0.1343/0.1073/0.06365/
+0.06003/0.04541/0.03257，
+加 3 次甚至 25 次迭代<b>一位都不动</b>。区域数据上残差却塌向零——差别就在这里。</li>
+<li><b>区域数据本质上是可解性问题，不是积分元问题。</b>未正则化的区域求解必须避免：
+30° 球冠实测条件数 5.52e+16、系数相对误差
+146.4（完全失效）；<code>kaula</code> 正则或 Slepian 才对。</li>
+</ol></div>
+
+<p class="small">约定：下文所有“覆盖度"= Σw/4π；"Shannon 数"= (L+1)²·覆盖度；
+"区域外场量"= 区域外重建 RMS 与区域内重建 RMS 之比。符号
+C<sub>nm</sub>/S<sub>nm</sub> 指 4π 归一化的实球谐系数。</p>
+</section><section id="s2">
+<h2>2. 数学基础</h2>
+
+<h3>2.1 展开式</h3>
+<div class="formula">
+f(θ,λ) = Σ<sub>n=0..N</sub> Σ<sub>m=0..n</sub> P̄<sub>nm</sub>(cos θ)
+[ C<sub>nm</sub> cos(mλ) + S<sub>nm</sub> sin(mλ) ]<br>
+<span class="lbl">P̄ 为 4π 归一化连带 Legendre 函数，无 Condon-Shortley 相位；
+S<sub>n0</sub> ≡ 0（sin 0λ = 0），因此非平凡系数共 (N+1)² 个。</span>
+</div>
+<p>归一化定义：<b>(1/4π) ∫<sub>Ω</sub> P̄<sub>nm</sub>² cos²(mλ) dΩ = 1</b>。
+与 SHTOOLS 的 <code>norm=1, csphase=1</code> 一致，也与 m2py / gridSHconvert 的三角布局兼容。</p>
+
+<h3>2.2 正变换（分析）</h3>
+<div class="formula">
+C<sub>nm</sub> = (1/4π) ∫<sub>Ω</sub> f(θ,λ) P̄<sub>nm</sub>(cos θ) cos(mλ) dΩ<br>
+S<sub>nm</sub> = (1/4π) ∫<sub>Ω</sub> f(θ,λ) P̄<sub>nm</sub>(cos θ) sin(mλ) dΩ
+</div>
+<p>离散化后就是加权投影 <b>x = (1/4π) AᵀWf</b>。注意<b>分母恒为 4π（全球归一化）</b>，
+而 W 必须是真实的面积元——这一条决定了区域数据上 C<sub>00</sub> 对不对。
+若把 W 强行归一化到 Σw = 4π，等于把系数整体乘上 4π/Σw，C<sub>00</sub> 随之失去几何含义。</p>
+
+<h3>2.3 反变换（综合）</h3>
+<p>把同一组系数代回 2.1 的展开式。SHKit 里 <code>synthesize()</code> 在给定点上求值，
+<code>synthesis_grid()</code> 在规则网格上求值（分块，避免一次性构造 N×N 的中间量）。</p>
+
+<h3>2.4 逐阶功率与 Parseval</h3>
+<div class="formula">
+逐阶功率 P<sub>n</sub> = Σ<sub>m=0..n</sub> ( C<sub>nm</sub>² + S<sub>nm</sub>² ) &nbsp;&nbsp;⟹&nbsp;&nbsp;
+Σ<sub>n</sub> P<sub>n</sub> = (1/4π) ∫<sub>Ω</sub> f² dΩ
+</div>
+<p>本机校验（L=8，GLQ 精确求积网格
+153 点）：ΣP<sub>n</sub> = 2.809570980632e+00，
+(1/4π)∫f²dΩ = 2.809570980632e+00，相对差
+<b>0.0e+00</b>。Parseval 是精确恒等式，与采样密度无关。</p>
+
+<h3>2.5 半波长分辨率</h3>
+<p>半波长 = πR/n（R = 6378 km）：</p>
+<table class="">
+<thead><tr>
+<th class="num">n</th>
+<th class="num">半波长 (km)</th>
+</tr></thead><tbody>
+<tr>
+<td class="num">4</td>
+<td class="num">5,009.4</td>
+</tr>
+<tr>
+<td class="num">8</td>
+<td class="num">2,504.7</td>
+</tr>
+<tr>
+<td class="num">12</td>
+<td class="num">1,669.8</td>
+</tr>
+<tr>
+<td class="num">20</td>
+<td class="num">1,001.9</td>
+</tr>
+<tr>
+<td class="num">40</td>
+<td class="num">500.9</td>
+</tr>
+<tr>
+<td class="num">60</td>
+<td class="num">334.0</td>
+</tr>
+<tr>
+<td class="num">120</td>
+<td class="num">167.0</td>
+</tr>
+<tr>
+<td class="num">240</td>
+<td class="num">83.5</td>
+</tr>
+<tr>
+<td class="num">480</td>
+<td class="num">41.7</td>
+</tr>
+<tr>
+<td class="num">700</td>
+<td class="num">28.6</td>
+</tr>
+</tbody></table>
+<p>L=12 时半波长 1,670 km，而长江掩膜只跨
+488 km × 255 km——
+<b>区域比分辨率元还小</b>，所以 L=12 根本不可能表达它的形状。</p>
+
+<h3>2.6 Shannon 数与覆盖度</h3>
+<div class="formula">
+覆盖度 c = Σw / 4π &nbsp;&nbsp;&nbsp;&nbsp;
+Shannon 数 N<sub>Sh</sub> = (L+1)² · c
+</div>
+<p>N<sub>Sh</sub> 是一个区域在给定阶数下能承载的独立自由度数。它同时也是完备性矩阵
+K 的迹：<b>Σλ(K) = (L+1)²·c</b>。本机在长江掩膜 L=12 上实测
+Σλ = 3.4949519168e-04，Shannon 数 =
+3.4949519168e-04，比值 <b>1.000000000000</b>——
+这条恒等式可当自检用。</p>
+<div class="note">N<sub>Sh</sub> ≪ 1 时，截断后掩膜的峰值只能到 N<sub>Sh</sub> 量级。
+长江掩膜 L=12 的 N<sub>Sh</sub> = 3.4950e-04，实测峰值
+3.4555e-04，比值 0.9887。
+要让掩膜“立”到 1，需 L ≈ <b>694.4</b>。</div>
+</section><section id="s3">
+<h2>3. 积分元（权重规则）</h2>
+<p>积分元 w<sub>i</sub> 是“每个样本代表多大立体角”。它决定了 Σw（⇒ 覆盖度 ⇒
+C<sub>00</sub>）以及每个点在目标函数里的份量。选错规则不会报错，只会给出一组自洽但
+物理错误的结果。</p>
+<table class="">
+<thead><tr>
+<th class="">规则</th>
+<th class="num">定义</th>
+<th class="num">Σw</th>
+<th class="num">精确性</th>
+<th class="num">适用条件</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>dh</code></td>
+<td class="num">Driscoll-Healy：纬度按 GL 节点权，经度 2π/nlon</td>
+<td class="num">4π</td>
+<td class="num">对带限场精确（nlon = 2·nlat）</td>
+<td class="num">全球等经纬网格</td>
+</tr>
+<tr>
+<td class=""><code>glq</code></td>
+<td class="num">Gauss-Legendre 精确求积网格（须用 <code>glq_grid()</code> 生成的权重）</td>
+<td class="num">4π</td>
+<td class="num">对 ≤L 阶带限场精确</td>
+<td class="num">需要“精确反演”的参考算例</td>
+</tr>
+<tr>
+<td class=""><code>grid</code></td>
+<td class="num">球带面积 Δλ(sinφ₂−sinφ₁)，格边取相邻<b>现存</b>坐标中点</td>
+<td class="num">覆盖面积</td>
+<td class="num">对<b>完整</b>网格精确</td>
+<td class="num">任意完整经纬网格（含区域矩形）</td>
+</tr>
+<tr>
+<td class=""><code>lattice</code></td>
+<td class="num">每点一个格元：Δλ<sub>rad</sub>(sin(φ+Δφ/2)−sin(φ−Δφ/2))，Δ 由坐标稳健估计</td>
+<td class="num">覆盖面积</td>
+<td class="num">对规则格点上的<b>子集</b>精确</td>
+<td class="num"><b>规则格网上的掩膜</b>（本案例）</td>
+</tr>
+<tr>
+<td class=""><code>voronoi</code></td>
+<td class="num">球面 Voronoi 胞面积</td>
+<td class="num">恒为 4π</td>
+<td class="num">对全球准均匀点集好</td>
+<td class="num">全球散点</td>
+</tr>
+<tr>
+<td class=""><code>delaunay</code></td>
+<td class="num">球面 Delaunay 1/3 规则（只保留原点可见面）</td>
+<td class="num">球面凸包面积</td>
+<td class="num">二阶近似</td>
+<td class="num"><b>不规则</b>区域散点</td>
+</tr>
+<tr>
+<td class=""><code>uniform</code></td>
+<td class="num">等面积 4π/N</td>
+<td class="num">4π</td>
+<td class="num">仅当采样本身等面积</td>
+<td class="num">等面积采样</td>
+</tr>
+<tr>
+<td class=""><code>user</code></td>
+<td class="num">调用者给出逐点权重</td>
+<td class="num">自定义</td>
+<td class="num">取决于输入</td>
+<td class="num">已有可靠权重（如本案例的 CSV）</td>
+</tr>
+</tbody></table>
+
+<h3>3.1 长江掩膜：三套口径实测对照</h3>
+<table class="">
+<thead><tr>
+<th class="">口径</th>
+<th class="num">Σw (sr)</th>
+<th class="num">覆盖面积 (km²)</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">相对 lattice</th>
+<th class="num">相对格元参考</th>
+</tr></thead><tbody>
+<tr>
+<td class="">lattice</td>
+<td class="num">2.598749175508e-05</td>
+<td class="num">1,057.19</td>
+<td class="num">2.0680188857e-06</td>
+<td class="num">1.000000×</td>
+<td class="num"></td>
+</tr>
+<tr>
+<td class="">grid</td>
+<td class="num">2.718054234939e-05</td>
+<td class="num">1,105.72</td>
+<td class="num">2.1629588354e-06</td>
+<td class="num">1.045909×</td>
+<td class="num"></td>
+</tr>
+<tr>
+<td class="">delaunay</td>
+<td class="num">1.818723666251e-03</td>
+<td class="num">73,986.81</td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">69.984579×</td>
+<td class="num"></td>
+</tr>
+<tr>
+<td class="">逐点格元参考（<code>examples/yangtze_points_weights.csv</code>）</td>
+<td class="num">2.598749175508e-05</td>
+<td class="num">1,057.19</td>
+<td class="num">2.0680188857e-06</td>
+<td class="num">0.999999999999998×</td>
+<td class="num">基准</td>
+</tr>
+</tbody></table>
+<p>参考值 1,057.19 km² 由
+<code>tools/yangtze_points_to_sh.py</code> 独立算出（每点一个 Δlon×Δlat 球面格），
+与库内 <code>lattice</code> 的 Σw 相对差
+<b>2.44e-15</b>（逐点最大相对差约
+2.8e-13，纯粹是该 CSV 只写了 12 位有效数字）。</p>
+
+<figure><img src="SHKit方法总结_figs/fig01_weights_bar.png" alt="长江掩膜三种积分元的总权重与面积"><figcaption><b>图1</b> <b>看图什么</b>：左为 Σw（对数轴），右为换算面积。lattice 与 grid 相差 4.59%，delaunay 则大出近 70 倍。<b>证明了什么</b>：同一份点集，换一个积分元规则就能让覆盖面积差 70 倍，而 C<sub>00</sub> 直接继承这个倍数——所以积分元不是“技术细节”，它决定答案的量级。绿色参考值由逐点格元独立算出，lattice 与它一致。</figcaption></figure>
+
+<h3>3.2 为什么 <code>grid</code> 在这份数据上偏大 4.59%</h3>
+<p>掩膜是“有洞的规则格网”：2509 个唯一纬度里有
+<b>12</b> 条间隔宽于一步，最宽
+0.0691681° ≈ <b>83 步</b>。
+<code>grid</code> 把格边放在相邻<b>现存</b>坐标的中点，于是紧邻空档的点吞掉了空档的一半。</p>
+<table class="">
+<thead><tr>
+<th class="">统计量</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">w<sub>grid</sub>/w<sub>lattice</sub> 最小值</td>
+<td class="num">0.99886022</td>
+</tr>
+<tr>
+<td class="">中位数</td>
+<td class="num">1.00006</td>
+</tr>
+<tr>
+<td class="">p99</td>
+<td class="num">1.0046899</td>
+</tr>
+<tr>
+<td class="">最大值</td>
+<td class="num">5,362.5</td>
+</tr>
+<tr>
+<td class="">std / mean</td>
+<td class="num">13.6</td>
+</tr>
+<tr>
+<td class="">比值 > 1.1 的点数</td>
+<td class="num">44 / 142846（0.031%）</td>
+</tr>
+<tr>
+<td class="">比值 > 1.001 的点占比</td>
+<td class="num">45.422%</td>
+</tr>
+<tr>
+<td class="">L=12 重建峰值比（grid/lattice）</td>
+<td class="num">1.044772</td>
+</tr>
+<tr>
+<td class="">L=12 两套重建的图样相关</td>
+<td class="num">0.986068</td>
+</tr>
+<tr>
+<td class="">逐阶 RMS 最大相对差</td>
+<td class="num">4.588%</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig02_weight_ratio_hist.png" alt="逐点权重比值不是常数；纬度空档分布"><figcaption><b>图2</b> <b>看图什么</b>：左图是 w<sub>grid</sub>/w<sub>lattice</sub> 的分布（对数横轴），std/mean = 13.6，远不是纯比例缩放；右图显示有 12 条空档宽于一个格距。<b>证明了什么</b>：偏差不是“整体乘个常数”，而是集中在 44 个紧邻空档的点上（最大超过 5000 倍），因此连重建的<b>形状</b>都会变——L=12 时两套重建的图样相关只有 0.9861。</figcaption></figure>
+
+<h3>3.3 区域 Voronoi 陷阱</h3>
+<p>对<b>区域子集</b>做球面 Voronoi 是明确错误的：Voronoi 剖分永远铺满整个球面，
+边界点的胞会膨胀到球的对侧，所以 Σw <b>恒等于 4π</b>。</p>
+<table class="">
+<thead><tr>
+<th class="">量</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">30° 球冠真实面积 2π(1−cos r)</td>
+<td class="num">0.8418 sr（占全球 6.70%）</td>
+</tr>
+<tr>
+<td class="">区域子集 Voronoi 的 Σw</td>
+<td class="num">12.5664 sr</td>
+</tr>
+<tr>
+<td class="">⇒ 虚高倍数</td>
+<td class="num"><b>14.93×</b></td>
+</tr>
+<tr>
+<td class="">同一球冠用 delaunay</td>
+<td class="num">0.7830 sr（0.930×，即偏小 7.0%）</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig16_voronoi_trap.png" alt="区域 Voronoi 虚高 14.93 倍"><figcaption><b>图16</b> <b>看图什么</b>：30° 球冠三种口径的 Σw。Voronoi 给 4π，是真实球冠面积的 14.93 倍。<b>证明了什么</b>：区域数据用 Voronoi 会把覆盖面积放大一个数量级，而且这个错误不会触发任何警告——只能用<code>delaunay</code>（不规则散点）或 <code>grid</code>/<code>lattice</code>（格点数据）。若手上有全球点集 + 区域掩膜，正确做法是在<b>全点集</b>上做 Voronoi再取子集。</figcaption></figure>
+</section><section id="s4">
+<h2>4. 估计方法：目标函数与适用条件</h2>
+<p>这是全文重点。SHKit 有 5 条估计路径加 2 种正则化、1 个 Slepian 分支。
+先说它们之间的关系，因为不理解这一点就会以为“迭代能把误差压小”。</p>
+
+<h3 id="s4a">4.1 统一视角：三种停止策略，同一个估计量</h3>
+<p>设 A 为设计矩阵（N×(L+1)²），W = diag(w<sub>i</sub>)，定义<b>完备性矩阵</b></p>
+<div class="formula">
+K = (1/4π) AᵀWA &nbsp;&nbsp;&nbsp;⟹&nbsp;&nbsp;&nbsp;
+K = I ⟺ 采样 + 权重构成精确求积规则
+</div>
+<p>三条路径其实是同一个正规方程 <b>(AᵀWA)x = AᵀWf</b> 的三种停止策略：</p>
+<table class="">
+<thead><tr>
+<th class="">路径</th>
+<th class="num">公式</th>
+<th class="num">等价说法</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>quadrature</code> / <code>projection</code></td>
+<td class="num">x = (1/4π)AᵀWf</td>
+<td class="num">正规方差的<b>第 0 步</b></td>
+</tr>
+<tr>
+<td class=""><code>iterative</code></td>
+<td class="num">x ← x + (1/4π)AᵀW(f − Ax)</td>
+<td class="num"><b>提前停止</b>的 Richardson/Landweber 迭代 = 隐式正则化</td>
+</tr>
+<tr>
+<td class=""><code>wlsq</code> / <code>cg</code></td>
+<td class="num">x = (AᵀWA)<sup>−1</sup>AᵀWf</td>
+<td class="num">正规方程的<b>极限解</b>；K 亏秩时 = 最小范数解</td>
+</tr>
+</tbody></table>
+<p>K ≈ I 时三者数值等价；K 远离 I 时它们分道扬镳，而<b>收敛极限是三者里唯一没有物理依据的
+那个</b>。长江案例正是后者。</p>
+<figure><img src="SHKit方法总结_figs/fig03_objective_domain.png" alt="两个目标函数的定义域不同"><figcaption><b>图3</b> <b>看图什么</b>：左图的积分域是整个球面（灰色点也参与），右图的求和域只有测点。<b>证明了什么</b>：这是全部问题的根源。区域外那 99.9998% 的隐含 0 在左图里通过 4π 归一化进入目标函数，在右图里根本不存在——所以右图的目标函数对“掩膜是否被还原“结构性失明，残差再小也说明不了问题。</figcaption></figure>
+
+<h3 id="s4b">4.2 <code>quadrature</code> / <code>projection</code>：零填充全球 L2 投影</h3>
+<div class="formula">
+min<sub>deg≤L</sub> ∫<sub>Ω</sub> ( f − A x )² dΩ &nbsp;&nbsp;&nbsp;
+Ω = <b>整个球面</b>，f = 区域外 0 &nbsp;&nbsp;⟹&nbsp;&nbsp;
+x = (1/4π) AᵀWf <span class="lbl">（W 取几何和，不归一化到 4π）</span>
+</div>
+<p>因为区域外 f ≡ 0 对分子无贡献，而分母 4π 是全球归一化，所以这个投影<b>恰好是
+零填充场的 L2 投影</b>。它的三条性质：</p>
+<ul>
+<li>样本残差<b>就是截断泄漏</b>，停在由 L 决定的地板上，永远压不到零；</li>
+<li>C<sub>00</sub> 精确等于面积占比（几何事实）；</li>
+<li>不做任何反演，因此没有近零空间放大。</li>
+</ul>
+<p>长江 L=12 实测：C<sub>00</sub> = 2.0680188857e-06
+（几何要求 2.0680188857e-06，比值 <b>1.000000000000</b>），
+残差 9.996580e-01，面积加权残差
+9.996581e-01。
+<code>quadrature</code> 与 <code>projection</code> 在同样的几何权重下<b>逐位相同</b>
+（相对差 0.000e+00）——它们本来就是同一件事。</p>
+<div class="note"><b>可选采样偏差校正 τ</b>（仅 <code>projection</code>）：把 K 特征分解
+（特征向量即 Slepian taper，特征值 λ 即集中因子），只对 <b>λ ≥ τ</b> 的方向除以 λ，
+其余保持不变。τ = 1 等于纯投影；τ → 0 退化成未正则化 WLSQ。
+校正的是<b>采样偏差</b>（可修的离散化误差），从不碰截断泄漏。</div>
+
+<h3 id="s4c">4.3 <code>iterative</code>：对同一目标做 Richardson 迭代</h3>
+<p>x ← x + (1/4π)AᵀW(f − Ax)，即对 4.2 的目标做定步长梯度下降，<b>不动点恰好是 WLSQ 解</b>。
+准均匀采样下它很划算：本机 Fibonacci 3000 点、L=20 实测</p>
+<table class="">
+<thead><tr>
+<th class="">方法</th>
+<th class="num">系数相对误差</th>
+</tr></thead><tbody>
+<tr>
+<td class="">quadrature</td>
+<td class="num">6.3443e-04</td>
+</tr>
+<tr>
+<td class="">iterative x1</td>
+<td class="num">2.7840e-06</td>
+</tr>
+<tr>
+<td class="">iterative x3</td>
+<td class="num">2.8053e-10</td>
+</tr>
+<tr>
+<td class="">wlsq</td>
+<td class="num">1.0551e-15</td>
+</tr>
+<tr>
+<td class="">projection</td>
+<td class="num">6.3443e-04</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig09_fib_roundtrip.png" alt="准均匀采样下迭代校正逐步逼近最小二乘"><figcaption><b>图9</b> <b>看图什么</b>：同一次求解，求积 → +1 次迭代 → +3 次迭代 → wlsq 的系数误差。<b>证明了什么</b>：在 max|K−I| 只有 0.0015 的良态采样上，迭代校正确实在逼近最小二乘解——此时“迭代减小误差”是<b>成立</b>的。所以问题不是迭代本身，而是它被用在 K 远离 I 的数据上。</figcaption></figure>
+
+<h3 id="s4d">4.4 <code>projection</code> 的 Slepian 视角与 τ 实测</h3>
+<p>集中比 λ = ∫<sub>R</sub>g²dΩ / ∫<sub>Ω</sub>g²dΩ = cᵀKc / cᵀc，所以 Slepian 函数就是 K 的
+特征向量、集中因子就是特征值——不需要任何外部库。</p>
+<table class="">
+<thead><tr>
+<th class="">τ</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">C<sub>00</sub>/几何值</th>
+<th class="num">被校正方向数</th>
+<th class="num">λ<sub>max</sub></th>
+<th class="num">样本残差</th>
+</tr></thead><tbody>
+<tr>
+<td class="">None（纯投影）</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.000000</td>
+<td class="num">—</td>
+<td class="num">—</td>
+<td class="num">9.9966e-01</td>
+</tr>
+<tr>
+<td class="">0.9</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.000000</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.9966e-01</td>
+</tr>
+<tr>
+<td class="">0.5</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.000000</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.9966e-01</td>
+</tr>
+<tr>
+<td class="">0.1</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.000000</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.9966e-01</td>
+</tr>
+<tr>
+<td class="">0.01</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.000000</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.9966e-01</td>
+</tr>
+<tr>
+<td class="">0.0001</td>
+<td class="num">6.046536e-03</td>
+<td class="num">2923.829927</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.9222e-03</td>
+</tr>
+<tr>
+<td class="">1e-06</td>
+<td class="num">6.046651e-03</td>
+<td class="num">2923.885749</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">9.8997e-03</td>
+</tr>
+<tr>
+<td class="">1e-08</td>
+<td class="num">1.221996e-02</td>
+<td class="num">5909.016147</td>
+<td class="num">—</td>
+<td class="num">0.000342</td>
+<td class="num">8.4950e-04</td>
+</tr>
+</tbody></table>
+<p>长江 L=12 的 K 谱：λ<sub>max</sub> = 3.4198e-04，
+λ<sub>min</sub> = -4.239e-20，Σλ = Shannon 数
+3.4950e-04。各阈值以上还有几个方向：</p>
+<table class="">
+<thead><tr>
+<th class="num">阈值</th>
+<th class="num">λ ≥ 阈值的个数</th>
+</tr></thead><tbody>
+<tr>
+<td class="num">λ ≥ 0.01</td>
+<td class="num">0</td>
+</tr>
+<tr>
+<td class="num">λ ≥ 0.0001</td>
+<td class="num">1</td>
+</tr>
+<tr>
+<td class="num">λ ≥ 1e-06</td>
+<td class="num">2</td>
+</tr>
+<tr>
+<td class="num">λ ≥ 1e-08</td>
+<td class="num">4</td>
+</tr>
+<tr>
+<td class="num">λ ≥ 1e-10</td>
+<td class="num">6</td>
+</tr>
+<tr>
+<td class="num">λ ≥ 1e-12</td>
+<td class="num">8</td>
+</tr>
+</tbody></table>
+<div class="warn"><b>读法</b>：τ = 0.5 是<b>空操作</b>，而且这是正确的——
+λ<sub>max</sub> = 3.420e-04 ≪ 0.5 说明这块区域在 L=12 下
+<b>不存在任何集中因子接近 1 的带限图样</b>。一旦把 τ 降到 1e-4 以下开始“校正”，
+C<sub>00</sub> 立刻从 1.000000 跳到 3e+03 倍。
+软件会明确报出 <code>corrected nothing</code> 并说明原因。</div>
+<figure><img src="SHKit方法总结_figs/fig04_k_spectrum.png" alt="长江 L=12 的完备性矩阵谱"><figcaption><b>图4</b> <b>看图什么</b>：左为 K 的 169 个特征值（降序、对数轴）；右为各阈值以上的方向数。<b>证明了什么</b>：0 个方向满足 λ ≥ 0.01，6 个满足 λ ≥ 1e-10。绝大多数方向对数据<b>数值上不可见</b>——这正是“许多完全不同的系数向量能同样好地拟合样本”的原因，也是最小二乘残差可以塌到 7e-06 的原因。</figcaption></figure>
+
+<h3 id="s4e">4.5 <code>wlsq</code> / <code>cg</code>：逐点加权最小二乘</h3>
+<div class="formula">
+min ‖√W (A x − f)‖² = Σ<sub>i=1..N</sub> w<sub>i</sub> ((Ax)<sub>i</sub> − f<sub>i</sub>)²
+&nbsp;&nbsp;<span class="lbl">求和域<b>只有测点</b></span>
+</div>
+<p>两条重要性质，决定了它什么时候会骗你：</p>
+<ul>
+<li><b>求和域是测点集</b>：隐含的 0 不在目标函数里，所以它对“掩膜是否被还原”结构性失明。</li>
+<li><b>目标函数对 W 的整体缩放不变</b>：φ(cW) 与 φ(W) 极小点相同。而指示场的正确
+C<sub>00</sub> 恰恰正比于 Σw——<b>目标函数扔掉的正是确定 C<sub>00</sub> 所需的那条信息</b>。</li>
+</ul>
+<p>长江 L=12 实测（<code>cg</code>，权重取 lattice，与存储文件的 delaunay 情形对照）：</p>
+<table class="">
+<thead><tr>
+<th class="">方法</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">C<sub>00</sub>/几何值</th>
+<th class="num">隐含 1-set 面积 (km²)</th>
+<th class="num">样本残差</th>
+<th class="num">CG 收敛标志</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>projection</code></td>
+<td class="num">2.0680188857e-06</td>
+<td class="num">1.000000</td>
+<td class="num">1,057</td>
+<td class="num">9.996580e-01</td>
+<td class="num">—</td>
+</tr>
+<tr>
+<td class=""><code>cg</code>（本轮）</td>
+<td class="num">2.3764302545e-02</td>
+<td class="num">11,491.3</td>
+<td class="num">12,148,497</td>
+<td class="num">7.162e-06</td>
+<td class="num">info = [0]（成功）</td>
+</tr>
+</tbody></table>
+<div class="warn"><b>关键陷阱</b>：<code>cg_info = [0]</code> 是 scipy 报告"<b>成功收敛</b>"。
+它确实收敛了，只是收敛到一个物理上不可能的解——C<sub>00</sub> 隐含
+12,148,497 km²（比中国还大）。<b>"收敛“和”正确“在这里是两件事。</b>
+本机把该情形下的告警逐条列出：C<sub>00</sub> 不一致（触发）＝
+True，残差塌陷告警（触发）＝ True。</div>
+<figure><img src="SHKit方法总结_figs/fig05_iteration_drift.png" alt="残差与物理误差严格反相关"><figcaption><b>图5</b> <b>看图什么</b>：左为样本残差随迭代下降（Richardson 只从 1.00 压到 0.991，CG 收敛那一步才趋到 7.162e-06）；右为同一批迭代里 C<sub>00</sub> 相对几何值的倍数。<b>证明了什么</b>：<b>残差每降一档，物理误差就涨一档</b>，没有一步例外。所以在区域数据上最小化样本残差就等于最大化物理错误——“迭代减小重建误差”作为验收标准在逻辑上就不成立。</figcaption></figure>
+<table class="">
+<thead><tr>
+<th class="">niter</th>
+<th class="num">样本残差</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">C<sub>00</sub>/几何值</th>
+<th class="num">隐含面积 (km²)</th>
+</tr></thead><tbody>
+<tr>
+<td class="">0</td>
+<td class="num">9.996580e-01</td>
+<td class="num">2.068019e-06</td>
+<td class="num">1.00×</td>
+<td class="num">1,057</td>
+</tr>
+<tr>
+<td class="">1</td>
+<td class="num">9.993162e-01</td>
+<td class="num">4.135331e-06</td>
+<td class="num">2.00×</td>
+<td class="num">2,114</td>
+</tr>
+<tr>
+<td class="">2</td>
+<td class="num">9.989745e-01</td>
+<td class="num">6.201935e-06</td>
+<td class="num">3.00×</td>
+<td class="num">3,170</td>
+</tr>
+<tr>
+<td class="">3</td>
+<td class="num">9.986329e-01</td>
+<td class="num">8.267834e-06</td>
+<td class="num">4.00×</td>
+<td class="num">4,227</td>
+</tr>
+<tr>
+<td class="">5</td>
+<td class="num">9.979500e-01</td>
+<td class="num">1.239751e-05</td>
+<td class="num">5.99×</td>
+<td class="num">6,338</td>
+</tr>
+<tr>
+<td class="">8</td>
+<td class="num">9.969266e-01</td>
+<td class="num">1.858673e-05</td>
+<td class="num">8.99×</td>
+<td class="num">9,502</td>
+</tr>
+<tr>
+<td class="">12</td>
+<td class="num">9.955637e-01</td>
+<td class="num">2.682916e-05</td>
+<td class="num">12.97×</td>
+<td class="num">13,715</td>
+</tr>
+<tr>
+<td class="">20</td>
+<td class="num">9.928434e-01</td>
+<td class="num">4.328021e-05</td>
+<td class="num">20.93×</td>
+<td class="num">22,125</td>
+</tr>
+<tr>
+<td class="">25</td>
+<td class="num">9.911471e-01</td>
+<td class="num">5.353929e-05</td>
+<td class="num">25.89×</td>
+<td class="num">27,370</td>
+</tr>
+<tr>
+<td class=""><b>CG 收敛</b></td>
+<td class="num"><b>7.162e-06</b></td>
+<td class="num"><b>2.376430e-02</b></td>
+<td class="num"><b>11,491.3×</b></td>
+<td class="num"><b>12,148,497</b></td>
+</tr>
+</tbody></table>
+
+<h3 id="s4f">4.6 正则化：<code>tikhonov</code> vs <code>kaula</code></h3>
+<div class="formula">
+x<sub>α</sub> = arg min ‖W<sup>1/2</sup>(Ax − f)‖² + α²‖R x‖²
+&nbsp;&nbsp;<span class="lbl"> tikhonov: R = I；kaula: R<sub>k</sub> = 1/(s<sub>n</sub>(n+1)<sup>p</sup>)</span>
+</div>
+<p>kaula 的谱先验 s<sub>n</sub> 由一次快速求积得到的逐阶振幅给出，因此<b>量纲无关</b>
+（EWH、重力异常、水高都直接可用）。长江 L=12 实测：</p>
+<table class="">
+<thead><tr>
+<th class="">正则化</th>
+<th class="num">α</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">隐含面积 (km²)</th>
+<th class="num">样本残差</th>
+</tr></thead><tbody>
+<tr>
+<td class="">无</td>
+<td class="num">—</td>
+<td class="num">2.376430e-02</td>
+<td class="num">12,148,497</td>
+<td class="num">7.1619e-06</td>
+</tr>
+<tr>
+<td class="">tikhonov</td>
+<td class="num">1e-08</td>
+<td class="num">2.376431e-02</td>
+<td class="num">12,148,498</td>
+<td class="num">7.1619e-06</td>
+</tr>
+<tr>
+<td class="">tikhonov</td>
+<td class="num">1e-06</td>
+<td class="num">2.376430e-02</td>
+<td class="num">12,148,496</td>
+<td class="num">7.1619e-06</td>
+</tr>
+<tr>
+<td class="">tikhonov</td>
+<td class="num">0.0001</td>
+<td class="num">2.376161e-02</td>
+<td class="num">12,147,121</td>
+<td class="num">7.1626e-06</td>
+</tr>
+<tr>
+<td class="">kaula</td>
+<td class="num">0.0001</td>
+<td class="num">3.432457e-07</td>
+<td class="num">175</td>
+<td class="num">9.7684e-03</td>
+</tr>
+<tr>
+<td class="">kaula</td>
+<td class="num">1e-06</td>
+<td class="num">3.342623e-06</td>
+<td class="num">1,709</td>
+<td class="num">3.8043e-04</td>
+</tr>
+</tbody></table>
+<p>30° 球冠区域反演（覆盖度 0.062，全球带限真值）的系数相对误差：</p>
+<table class="">
+<thead><tr>
+<th class="">正则化</th>
+<th class="num">系数相对误差</th>
+</tr></thead><tbody>
+<tr>
+<td class="">区域求积（quadrature）</td>
+<td class="num">0.896</td>
+</tr>
+<tr>
+<td class=""><code>wlsq</code> 未正则化</td>
+<td class="num"><b>146.4</b></td>
+</tr>
+<tr>
+<td class=""><code>wlsq</code> + tikhonov α=1e-9</td>
+<td class="num">12.572</td>
+</tr>
+<tr>
+<td class=""><code>wlsq</code> + kaula α=1e-4</td>
+<td class="num">1.282</td>
+</tr>
+</tbody></table>
+<p>条件数随阶数的增长（同一球冠，未正则化 WLSQ）：</p>
+<table class="">
+<thead><tr>
+<th class="">L</th>
+<th class="num">系数数</th>
+<th class="num">条件数</th>
+</tr></thead><tbody>
+<tr>
+<td class="">2</td>
+<td class="num">9</td>
+<td class="num">3.38e+03</td>
+</tr>
+<tr>
+<td class="">4</td>
+<td class="num">25</td>
+<td class="num">1.09e+07</td>
+</tr>
+<tr>
+<td class="">6</td>
+<td class="num">49</td>
+<td class="num">3.51e+10</td>
+</tr>
+<tr>
+<td class="">8</td>
+<td class="num">81</td>
+<td class="num">1.14e+14</td>
+</tr>
+<tr>
+<td class="">12</td>
+<td class="num">169</td>
+<td class="num">5.52e+16</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig06_regularization.png" alt="kaula 有效，tikhonov 在区域数据上几乎无效"><figcaption><b>图6</b> <b>看图什么</b>：左为长江 L=12 各种正则化下 C<sub>00</sub> 隐含的面积；右为 30° 球冠的系数相对误差。<b>证明了什么</b>：tikhonov（R=I）在这类问题上几乎不起作用——长江上 α 加到 1e-4 仍然停在 2.376e-02；而 <b>kaula 把 C<sub>00</sub> 拉回 3.432e-07</b>，与散点足迹同量级。原因是零空间太大，惩罚方向不对。</figcaption></figure>
+
+<h3 id="s4g">4.7 <code>slepian</code>：区域数据的正解</h3>
+<p>核心洞察：<b>Slepian 集中矩阵就是 K</b>。在正交归一的 taper 基下，区域加权最小二乘的
+正规矩阵是<b>对角</b>的：</p>
+<div class="formula">
+s<sub>α</sub> = t<sub>α</sub>ᵀAᵀWf / (4π λ<sub>α</sub>), &nbsp;&nbsp; c = Σ<sub>α</sub> s<sub>α</sub> t<sub>α</sub>
+&nbsp;&nbsp;<span class="lbl">只有 λ<sub>α</sub> ≈ 1 的 taper 可用，截断本身就是正则化</span>
+</div>
+<p>本机实测（25° 球冠，186 点，L=20，
+覆盖度 0.0424，λ>0.5 共 17 个 taper）：</p>
+<table class="">
+<thead><tr>
+<th class="">指标</th>
+<th class="num">Slepian（λ>0.5）</th>
+<th class="num">未正则化 WLSQ</th>
+</tr></thead><tbody>
+<tr>
+<td class="">条件数</td>
+<td class="num">1.506</td>
+<td class="num">3.29e+12</td>
+</tr>
+<tr>
+<td class="">‖C‖（真值 3.43）</td>
+<td class="num">0.3202</td>
+<td class="num">12.7</td>
+</tr>
+<tr>
+<td class="">区域外场量 / 区域内 RMS</td>
+<td class="num">4.02e-02</td>
+<td class="num">8.9</td>
+</tr>
+<tr>
+<td class="">系数相对误差</td>
+<td class="num">0.996</td>
+<td class="num">3.9</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig15_slepian_vs_wlsq.png" alt="Slepian 与未正则 WLSQ 的三项指标对比"><figcaption><b>图15</b> <b>看图什么</b>：条件数、‖C‖、区域外场量三项（都是对数轴）。<b>证明了什么</b>：未正则化 WLSQ 在区域数据上每一项都大出几个数量级，尤其是区域外场量——它把误差全部倾泻到数据没覆盖的地方。Slepian 只保留 λ>0.5 的 taper，把这部分完全抑制住。</figcaption></figure>
+<h4>小区域连低阶场都恢复不了</h4>
+<table class="">
+<thead><tr>
+<th class="">球冠半径</th>
+<th class="num">覆盖度</th>
+<th class="num">Shannon 数(L=4)</th>
+<th class="num">λ<sub>max</sub></th>
+<th class="num">λ>0.5 的个数</th>
+</tr></thead><tbody>
+<tr>
+<td class="">24°</td>
+<td class="num">0.0432</td>
+<td class="num">1.08</td>
+<td class="num">0.638</td>
+<td class="num">1</td>
+</tr>
+<tr>
+<td class="">15°</td>
+<td class="num">0.0170</td>
+<td class="num">0.426</td>
+<td class="num">0.3115</td>
+<td class="num">0</td>
+</tr>
+<tr>
+<td class="">8°</td>
+<td class="num">0.0049</td>
+<td class="num">0.122</td>
+<td class="num">0.08667</td>
+<td class="num">0</td>
+</tr>
+</tbody></table>
+<p>低阶场本身就弥散在全球，其集中因子恰好接近面积占比 A/4π，远低于 0.5；能集中的 taper
+都落在高阶。所以<b>用区域数据反演低阶全球场在信息论上不成立</b>，正确做法是
+<b>remove–restore</b>：先用全球模型扣掉长波，只在区域内分析残差，最后加回。</p>
+
+<h3 id="s4h">4.8 <code>auto</code> 的选路</h3>
+<table class="">
+<thead><tr>
+<th class="">采样</th>
+<th class="num">N</th>
+<th class="num">max|K−I|</th>
+<th class="num">auto 选择</th>
+</tr></thead><tbody>
+<tr>
+<td class="">DH 网格 90x180（规则）</td>
+<td class="num">16,200</td>
+<td class="num">2.442e-15</td>
+<td class="num"><b>quadrature</b></td>
+</tr>
+<tr>
+<td class="">GLQ 网格（L=20，用 GLQ 自己的权重）</td>
+<td class="num">861</td>
+<td class="num">4.996e-15</td>
+<td class="num"><b>wlsq</b></td>
+</tr>
+<tr>
+<td class="">Fibonacci 3000 点</td>
+<td class="num">3,000</td>
+<td class="num">1.473e-03</td>
+<td class="num"><b>quadrature</b></td>
+</tr>
+<tr>
+<td class="">随机均匀 3000 点</td>
+<td class="num">3,000</td>
+<td class="num">6.050e-02</td>
+<td class="num"><b>wlsq</b></td>
+</tr>
+<tr>
+<td class="">聚簇 3000 点（70% 在 35° 帽）</td>
+<td class="num">3,000</td>
+<td class="num">1.262e-01</td>
+<td class="num"><b>wlsq</b></td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig10_routing.png" alt="auto 的选路判据实测"><figcaption><b>图10</b> <b>看图什么</b>：五类采样的 max|K−I|（对数轴）与 auto 的选择，虚线是 1e-2 阈值。<b>证明了什么</b>：判据本身工作正常——DH 网格 2.44e-15 直接求积，随机均匀/聚簇点 6.05e-02 / 1.26e-01 转最小二乘。但注意 GLQ 那一行：它的 max|K−I| 只有 5.00e-15，却仍选了 wlsq——因为 auto 还要求超定比 ≥ 2，而 GLQ(L=20) 是 861 点 / 441 系数 = 1.95。<b>所以auto 是“求积够准”与“方程够超定”两个条件的与，不是只看完备性</b>。</figcaption></figure>
+<p><b>本轮修改后的行为</b>：区域覆盖（覆盖度 &lt; 0.999）→ 路由到
+<code>projection</code>，不再升级为 <code>wlsq</code>/<code>cg</code>。原因是区域覆盖下
+正规矩阵在双精度下已经奇异（长江实测
+-4.24e-20 的最小特征值），升级到最小二乘只会返回近零空间的
+最小范数解。</p>
+</section><section id="s5">
+<h2>5. 诊断量与守卫</h2>
+<table class="">
+<thead><tr>
+<th class="">诊断量</th>
+<th class="">含义</th>
+<th class="num">判据阈值</th>
+<th class="num">该采取的动作</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>max|K−I|</code>（gram_deviation）</td>
+<td class="">K = AᵀWA/4π 偏离单位阵的最大量；K=I 才是精确求积</td>
+<td class="num">&lt; 1e-2 允许直接求积</td>
+<td class="num">超标且覆盖全球 → 换 WLSQ + 正则；覆盖区域 → <b>不要反演 K</b></td>
+</tr>
+<tr>
+<td class=""><code>coverage</code></td>
+<td class="">Σw/4π，数据覆盖球面的比例</td>
+<td class="num">&lt; 0.999 判为区域数据</td>
+<td class="num">区域数据按目标 A 走 <code>projection</code>；要目标 B 就正则化 / Slepian / remove-restore</td>
+</tr>
+<tr>
+<td class=""><code>condition_number</code></td>
+<td class="">cond(A√W)</td>
+<td class="num">&gt; 1e8 双精度耗尽</td>
+<td class="num">降阶、提高超定比、或给正则化</td>
+</tr>
+<tr>
+<td class=""><code>overdetermination</code></td>
+<td class="">N/(L+1)²</td>
+<td class="num">&lt; 2 勉强定解；推荐 ≥ 4</td>
+<td class="num">降 nmax，或增加数据</td>
+</tr>
+<tr>
+<td class=""><code>shannon</code></td>
+<td class="">(L+1)²·coverage，区域能承载的自由度</td>
+<td class="num">&lt; 0.5·系数数 ⇒ 该区域撑不住这个阶数</td>
+<td class="num">降阶，或改用 Slepian；记住峰值上界就是这个数</td>
+</tr>
+<tr>
+<td class=""><code>lmax_recommended</code></td>
+<td class="">当前采样能支持的最大阶数（计数上限）</td>
+<td class="num">覆盖 ≪ 1 时只是计数上限，不是有效约束</td>
+<td class="num">配合 Shannon 一起看</td>
+</tr>
+<tr>
+<td class=""><b><code>residual_rms_weighted</code></b>（新增）</td>
+<td class="">面积加权的残差 RMS——球面上的真 L2 范数</td>
+<td class="num">与未加权值并列显示</td>
+<td class="num">两者差别大时说明采样在球面上不均匀（如经纬网格极区过采样）</td>
+</tr>
+<tr>
+<td class=""><b>C<sub>00</sub> 一致性守卫</b>（新增）</td>
+<td class="">C<sub>00</sub> 必须等于 Σwf/4π（场的全球均值；任何阶截断都保持它）</td>
+<td class="num">相对偏离 &gt; 10% 报警</td>
+<td class="num">检查积分元与 normalise；改用 <code>projection</code>。<b>小的样本残差不能作为辩护</b></td>
+</tr>
+<tr>
+<td class=""><b>残差塌陷告警</b>（新增）</td>
+<td class="">wlsq/cg/iterative + 覆盖度 &lt; 0.999 + 相对残差 &lt; 1e-3</td>
+<td class="num">三者同时满足即报警</td>
+<td class="num">说明求解器利用了近零空间，不是拟合得好；与 <code>projection</code> 对照并检查 C<sub>00</sub></td>
+</tr>
+</tbody></table>
+<h3>5.1 未加权残差不是球面上的 L2 范数</h3>
+<p>经纬网格在极区过采样，而那里 f 与重建都 ≈0，会把未加权 RMS 稀释。全局 0/1 帽实测：</p>
+<table class="">
+<thead><tr>
+<th class="">L=12 帽</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">未加权残差 RMS</td>
+<td class="num">6.003356e-02</td>
+</tr>
+<tr>
+<td class="">面积加权残差 RMS</td>
+<td class="num">6.815486e-02</td>
+</tr>
+<tr>
+<td class="">比值</td>
+<td class="num">1.1353</td>
+</tr>
+</tbody></table>
+<p>几何/区域数据上两者一致（因为权重本身近似均匀），但全球网格数据上必须看面积加权值。</p>
+<h3>5.2 C<sub>00</sub> 守卫能力与边界</h3>
+<p>它抓的是<b>DC 不一致</b>，不是<b>积分元选错</b>。实测两种情形：</p>
+<table class="">
+<thead><tr>
+<th class="">情形</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">自身 Σw/4π</th>
+<th class="num">比值</th>
+<th class="num">守卫</th>
+</tr></thead><tbody>
+<tr>
+<td class="">存储的 <code>yantze_shkit_coeffs.gfc</code>（当前内容：projection + delaunay）</td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">1.000000</td>
+<td class="num"><b>不触发</b></td>
+</tr>
+<tr>
+<td class="">原始 <code>.gfc</code>（cg + reg=None + delaunay，本机复现）</td>
+<td class="num">2.3814443053e-02</td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">164.5×</td>
+<td class="num"><b>触发</b></td>
+</tr>
+</tbody></table>
+<p>当前文件是<b>自洽</b>的（C<sub>00</sub> 精确等于它自己权重的 Σw/4π），所以守卫不响——
+但它用的 delaunay 口径把面积放大了 70.0 倍。
+<b>守卫能抓“求解器跑偏”，抓不了“口径选错”；后者要靠
+<code>rule='auto'</code> 的格点识别与 3.1 的对照表。</b></p>
+</section><section id="s6">
+<h2>6. 算法与实现</h2>
+<table class="">
+<thead><tr>
+<th class="">环节</th>
+<th class="">实现要点</th>
+<th class="num">复杂度 / 内存</th>
+</tr></thead><tbody>
+<tr>
+<td class="">流式 m 阶求积</td>
+<td class="">沿阶 m 逐列推进，只保留当前与 m−2 列，不构造 N×N 中间量</td>
+<td class="num">O(N·(L+1)²) 时间，O(N·L) 内存</td>
+</tr>
+<tr>
+<td class="">矩阵无关 CG（<code>SHOperator</code>）</td>
+<td class="">matvec/rmatvec 现场构造，设计矩阵从不落地</td>
+<td class="num">O(N) 内存（对比稠密 O(N·ncoef)）</td>
+</tr>
+<tr>
+<td class="">K 的特征分解 = Slepian</td>
+<td class="">集中矩阵就是 K，特征向量即 taper，<b>不需要外部库</b></td>
+<td class="num">O(ncoef³)，ncoef &gt; 1500 时跳过</td>
+</tr>
+<tr>
+<td class="">Kaula 谱先验</td>
+<td class="">由一次快速求积得到逐阶振幅 s<sub>n</sub>，量纲无关</td>
+<td class="num">额外一次求积</td>
+</tr>
+<tr>
+<td class="">L 曲线自动选 α</td>
+<td class="">变量替换 y = Rx 后一次特征分解扫描整条 L 曲线</td>
+<td class="num">O(ncoef³)；ncoef &gt; 2500 时跳过并提示显式给 α</td>
+</tr>
+<tr>
+<td class="">完备性检查开销</td>
+<td class="">N·ncoef² &gt; 2e9 flops 时降级为廉价的 m=0 对角完备性</td>
+<td class="num">O(N·L)</td>
+</tr>
+<tr>
+<td class="">单位正/反变换</td>
+<td class="">正变换 C<sub>nm</sub> = a<sub>nm</sub>/f<sub>u</sub>（改它导出的系数就变）；反变换 f<sub>t</sub> 只影响重建</td>
+<td class="num">常数级</td>
+</tr>
+<tr>
+<td class="">多时次</td>
+<td class="">各时次独立求解，共享设计矩阵/算子</td>
+<td class="num">线性于 ntime</td>
+</tr>
+</tbody></table>
+<p>本机在长江数据上实测的耗时（L=12，142846 点）：求积/投影 ~2 s，
+6 组正则化 CG 共 ~110 s，τ 扫描 8 组 ~10 s，CG 单次 ~6 s；阶数扫描
+L=12/30/60/120 分别 0.9, 4.6, 16.7, 65.1 s。
+L=120 以上直接求和的代价迅速上升（README 记录 L=700 需 40+ 分钟），
+更高阶必须换 Slepian / FFT / 局部方法。</p>
+</section><section id="s7">
+<h2>7. 试验一：示例数据（全球准均匀散点，真值已知）</h2>
+<p>数据：GUI「生成示例数据」= 全球 Fibonacci <b>2,500</b> 点
+（<code>main_window.make_demo()</code>：<code>n, L = 2500, 12</code>），
+真实场带限 12 阶 + 1% 噪声；<code>sample_data/</code> 另提供 3000 点、
+区域球冠、以及 20 阶真值系数（<code>truth_coeffs_20.sh</code>）。
+真值已知时可以直接量系数误差，因此这是验证估计量行为的最佳场景。</p>
+<table class="">
+<thead><tr>
+<th class="">项目</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">点数</td>
+<td class="num">2,500（Fibonacci 球面）</td>
+</tr>
+<tr>
+<td class="">真值</td>
+<td class="num">带限 12 阶 + 1% 噪声</td>
+</tr>
+<tr>
+<td class="">GUI 自动选的积分元</td>
+<td class="num"><code>voronoi</code></td>
+</tr>
+<tr>
+<td class="">GUI 跑出的方法</td>
+<td class="num"><code>iterative</code></td>
+</tr>
+<tr>
+<td class="">警告条数</td>
+<td class="num">1</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/gui_01_demo_main.png" alt="示例数据载入后的主界面（当前版本）"><figcaption><b>截图1</b> <b>看什么</b>：左侧数据摘要（类型/点数/范围/建议积分元），右侧分析参数面板。<b>说明什么</b>：这是重新生成的截图（离屏 Qt + SimHei），中文正常显示，并且包含本轮新增的 <code>projection</code> 方法与 <code>lattice</code> 积分元选项。此前的 <code>tests/_gui_shots/*.png</code> 因离屏运行缺字体，所有中文都是豆腐块，已弃用。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_02_demo_spectrum.png" alt="逐阶谱 tab（示例数据）"><figcaption><b>截图2</b> <b>看什么</b>：重建（球谐解）与真实场两条逐阶振幅曲线。<b>说明什么</b>：真值已知时两条曲线应当重合——这正是需要“真实场”曲线才有意义的场合。对没有真值的数据（如长江散点），这条曲线本不该出现。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_03_demo_report.png" alt="诊断报告 tab（示例数据）"><figcaption><b>截图3</b> <b>看什么</b>：方法、积分元、覆盖度、Shannon 数、<code>max|K−I|</code>、拟合残差与<b>面积加权残差</b>、C<sub>00</sub> 与数据加权均值之比、以及逐条警告。<b>说明什么</b>：报告里现在同时给出两个残差范数与 C<sub>00</sub> 一致性，这正是判断“求解器有没有跑偏”的最小信息集。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_05_demo_map.png" alt="地图视图（示例数据）"><figcaption><b>截图5</b> <b>看什么</b>：原始散点 / 重建场 / 差值三种视图切换。<b>说明什么</b>：真值已知时差值场应当只剩噪声，这是判断求解器有没有系统偏差最快的一眼。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_04_demo_coeffs.png" alt="系数统计 tab（示例数据）"><figcaption><b>截图4</b> <b>看什么</b>：逐阶 RMS、power、功率占比与对应半波长。<b>说明什么</b>：带限场的谱应当随阶数下降；若看到谱在低阶突然抬高，通常是噪声放大或近零空间在作祟。</figcaption></figure>
+<h3>7.1 噪声行为：阶数比估计量重要</h3>
+<p>真值带限 40 阶、求解 20 阶、
+3000 点，加高斯噪声：</p>
+<table class="">
+<thead><tr>
+<th class="">相对噪声 σ</th>
+<th class="num">quadrature</th>
+<th class="num">iterative</th>
+<th class="num">wlsq</th>
+<th class="num">理论 (L+1)/√N·σ</th>
+</tr></thead><tbody>
+<tr>
+<td class="">0</td>
+<td class="num">2.2020e-02</td>
+<td class="num">2.2001e-02</td>
+<td class="num">2.2001e-02</td>
+<td class="num">0.0000e+00</td>
+</tr>
+<tr>
+<td class="">0.01</td>
+<td class="num">2.2332e-02</td>
+<td class="num">2.2319e-02</td>
+<td class="num">2.2319e-02</td>
+<td class="num">3.8341e-03</td>
+</tr>
+<tr>
+<td class="">0.05</td>
+<td class="num">2.8919e-02</td>
+<td class="num">2.8924e-02</td>
+<td class="num">2.8924e-02</td>
+<td class="num">1.9170e-02</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig08_noise.png" alt="噪声主导时三种估计量等价"><figcaption><b>图8</b> <b>看图什么</b>：三条误差随噪声的曲线几乎重合，并与理论线一致。<b>证明了什么</b>：σ = 1% 与 5% 时三法差别在<b>第 4 位有效数字以内</b>。有噪声时起决定作用的是<b>阶数</b>而不是估计量——所以“要不要花代价做最小二乘“这个问题，在噪声主导时答案是不值得。</figcaption></figure>
+</section><section id="s8">
+<h2>8. 试验二：全球 0/1 帽（良态对照）</h2>
+<p>构造：全球 0.5° 网格（259,200 点），20° 半径的 0/1 帽，
+<code>dh</code> 权重（Σw = 12.566370614359 = 4π，覆盖率
+<b>1.000000</b>），帽面积占比 0.030182。
+这是<b>良态</b>对照：样本残差是真实全球误差的离散化，可以放心用它做判据。</p>
+<table class="">
+<thead><tr>
+<th class="">L</th>
+<th class="num">系数数</th>
+<th class="num">求积残差</th>
+<th class="num">+3 次迭代</th>
+<th class="num">+25 次迭代</th>
+<th class="num">面积加权相对截断误差</th>
+</tr></thead><tbody>
+<tr>
+<td class="">2</td>
+<td class="num">9</td>
+<td class="num">0.13426923</td>
+<td class="num">0.13426923</td>
+<td class="num">0.13426923</td>
+<td class="num">0.871399</td>
+</tr>
+<tr>
+<td class="">4</td>
+<td class="num">25</td>
+<td class="num">0.10726011</td>
+<td class="num">0.10726011</td>
+<td class="num">0.10726011</td>
+<td class="num">0.686968</td>
+</tr>
+<tr>
+<td class="">8</td>
+<td class="num">81</td>
+<td class="num">0.06364929</td>
+<td class="num">0.06364929</td>
+<td class="num">0.06364929</td>
+<td class="num">0.413719</td>
+</tr>
+<tr>
+<td class="">12</td>
+<td class="num">169</td>
+<td class="num">0.06003356</td>
+<td class="num">0.06003356</td>
+<td class="num">0.06003356</td>
+<td class="num">0.392304</td>
+</tr>
+<tr>
+<td class="">20</td>
+<td class="num">441</td>
+<td class="num">0.04540591</td>
+<td class="num">0.04540591</td>
+<td class="num">0.04540591</td>
+<td class="num">0.298274</td>
+</tr>
+<tr>
+<td class="">40</td>
+<td class="num">1681</td>
+<td class="num">0.03256707</td>
+<td class="num">0.03256707</td>
+<td class="num">0.03256707</td>
+<td class="num">0.213264</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig07_cap_floor.png" alt="截断地板存在，且迭代算法尊重它"><figcaption><b>图7</b> <b>看图什么</b>：左为三种迭代次数的残差曲线（三条完全重合），右为面积加权相对截断误差随 L 下降。<b>证明了什么</b>：<b>加 3 次甚至 25 次迭代，残差一位都不动</b>——因为 dh 权重下投影已经就是正规方程的解，校正项恒等于零。而残差停在由 L 决定的地板上（L=40 仍有 0.2133）。<b>这就是截断泄漏：它是必然的、非零的，而且不会被任何估计量消掉。</b>对比第 9 节的长江案例——那里残差却塌向零。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/fig14_cap_map.png" alt="即使覆盖全球，L=12 也重建不出一个 20° 的 0/1 帽"><figcaption><b>图14</b> <b>看图什么</b>：左为真值 0/1 帽，右为 L=12 投影重建。<b>证明了什么</b>：即使是全球有效求积、C<sub>00</sub> 精确正确的场合，L=12 的相对截断误差仍有 0.3923，帽被抹成一片平滑鼓包。低阶截断的泄漏是几何事实，与算法无关。</figcaption></figure>
+</section><section id="s9">
+<h2>9. 试验三：长江散点掩膜（重点案例）</h2>
+<h3>9.1 数据</h3>
+<table class="">
+<thead><tr>
+<th class="">项目</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">点数</td>
+<td class="num">142,846</td>
+</tr>
+<tr>
+<td class="">经度范围</td>
+<td class="num">106.0275 .. 111.0992 °E（跨度 5.0717°）</td>
+</tr>
+<tr>
+<td class="">纬度范围</td>
+<td class="num">29.0325 .. 31.3225 °N（跨度 2.2900°）</td>
+</tr>
+<tr>
+<td class="">value</td>
+<td class="num">min = max = 1.0，std = 0.0（只有一个取值）</td>
+</tr>
+<tr>
+<td class="">唯一纬度 / 唯一经度</td>
+<td class="num">2,509 / 5,816</td>
+</tr>
+<tr>
+<td class="">格距</td>
+<td class="num">0.00083160° × 0.00083350° ≈ 92.5 m × 92.7 m</td>
+</tr>
+<tr>
+<td class="">外接矩形面积</td>
+<td class="num">123,726 km²（掩膜只占其中极小部分）</td>
+</tr>
+<tr>
+<td class=""><code>rule='auto'</code> 判定</td>
+<td class="num"><code>lattice</code>（识别为规则格点上的子集）</td>
+</tr>
+</tbody></table>
+<div class="note"><b>关键字义</b>：<code>Yangtze_River.txt</code> 列出的是<b>取值为 1 的点</b>；
+文件里没有 0 值行。所以这份数据的物理含义是<b>区域指示函数</b>（区域内 = 1、区域外 = 0），
+而不是“一个常数场”。指示场的信息全在<b>边界</b>上，这是它的高频内容。
+（原始数据 <code>Yangtze_River.mat</code> 只有坐标、没有数值场，
+对应作者 <code>cal_kernalSH.m</code> / <code>scatter2SHs.m</code> 里的 <code>input_mask</code>。）</div>
+
+<h3>9.2 C<sub>00</sub> 是几何事实</h3>
+<p>对 0/1 场，C<sub>00</sub> = 为 1 的面积占全球的比例。三套积分元给出三套答案：</p>
+<table class="">
+<thead><tr>
+<th class="">口径</th>
+<th class="num">Σw (sr)</th>
+<th class="num">面积 (km²)</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">相对 lattice</th>
+<th class="num">与自身 Σw/4π 自洽？</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>lattice</code></td>
+<td class="num">2.598749175508e-05</td>
+<td class="num">1,057.19</td>
+<td class="num">2.0680188857e-06</td>
+<td class="num">1.000000×</td>
+<td class="num">是</td>
+</tr>
+<tr>
+<td class=""><code>grid</code></td>
+<td class="num">2.718054234939e-05</td>
+<td class="num">1,105.72</td>
+<td class="num">2.1629588354e-06</td>
+<td class="num">1.045909×</td>
+<td class="num">是</td>
+</tr>
+<tr>
+<td class=""><code>delaunay</code></td>
+<td class="num">1.818723666251e-03</td>
+<td class="num">73,986.81</td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">69.98×</td>
+<td class="num">是</td>
+</tr>
+<tr>
+<td class="">逐点格元参考（CSV）</td>
+<td class="num">2.598749175508e-05</td>
+<td class="num">1,057.19</td>
+<td class="num">2.0680188857e-06</td>
+<td class="num">0.999999999999998×</td>
+<td class="num">是</td>
+</tr>
+</tbody></table>
+<p>四个都“自洽”（C<sub>00</sub> 都等于各自的 Σw/4π），但只有 <code>lattice</code> 与逐点格元参考
+一致。所以自洽性检查抓不到口径错误。</p>
+
+<h3>9.3 逐阶谱与泄漏</h3>
+<table class="">
+<thead><tr>
+<th class="">n</th>
+<th class="num">逐阶 RMS（projection）</th>
+<th class="num">功率占比</th>
+</tr></thead><tbody>
+<tr>
+<td class="">0</td>
+<td class="num">1.462310e-06</td>
+<td class="num">0.605%</td>
+</tr>
+<tr>
+<td class="">1</td>
+<td class="num">1.790489e-06</td>
+<td class="num">1.813%</td>
+</tr>
+<tr>
+<td class="">2</td>
+<td class="num">1.886355e-06</td>
+<td class="num">3.019%</td>
+</tr>
+<tr>
+<td class="">3</td>
+<td class="num">1.931424e-06</td>
+<td class="num">4.220%</td>
+</tr>
+<tr>
+<td class="">4</td>
+<td class="num">1.956775e-06</td>
+<td class="num">5.415%</td>
+</tr>
+<tr>
+<td class="">5</td>
+<td class="num">1.972234e-06</td>
+<td class="num">6.601%</td>
+</tr>
+<tr>
+<td class="">6</td>
+<td class="num">1.981893e-06</td>
+<td class="num">7.776%</td>
+</tr>
+<tr>
+<td class="">7</td>
+<td class="num">1.987766e-06</td>
+<td class="num">8.940%</td>
+</tr>
+<tr>
+<td class="">8</td>
+<td class="num">1.990958e-06</td>
+<td class="num">10.090%</td>
+</tr>
+<tr>
+<td class="">9</td>
+<td class="num">1.992129e-06</td>
+<td class="num">11.224%</td>
+</tr>
+<tr>
+<td class="">10</td>
+<td class="num">1.991698e-06</td>
+<td class="num">12.341%</td>
+</tr>
+<tr>
+<td class="">11</td>
+<td class="num">1.989945e-06</td>
+<td class="num">13.439%</td>
+</tr>
+<tr>
+<td class="">12</td>
+<td class="num">1.987066e-06</td>
+<td class="num">14.517%</td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig11_yangtze_spectrum.png" alt="长江掩膜的逐阶谱：近乎平坦"><figcaption><b>图11</b> <b>看图什么</b>：左为 projection 与 cg 两条逐阶 RMS（对数轴），右为 projection 的功率占比。<b>证明了什么</b>：0/1 掩膜是<b>宽谱</b>——n=0 只占 0.60%，能量摊在所有阶上，没有“衰减的谱”可看。这与第 8 节帽的谱形状一致，说明“截断到低阶必然泄漏”是这类数据的通性而不是个案。</figcaption></figure>
+<table class="">
+<thead><tr>
+<th class="">L=12 的关键量</th>
+<th class="num">值</th>
+</tr></thead><tbody>
+<tr>
+<td class="">Shannon 数 (L+1)²·Σw/4π</td>
+<td class="num">3.4950e-04</td>
+</tr>
+<tr>
+<td class="">实测重建峰值</td>
+<td class="num">3.4555e-04</td>
+</tr>
+<tr>
+<td class="">峰值 / Shannon 数</td>
+<td class="num">0.9887</td>
+</tr>
+<tr>
+<td class="">掩膜要“立”到 1 所需 L</td>
+<td class="num">≈ 694.4</td>
+</tr>
+<tr>
+<td class="">半波长 @L=12</td>
+<td class="num">1,670 km</td>
+</tr>
+<tr>
+<td class="">区域尺度</td>
+<td class="num">488 km × 255 km</td>
+</tr>
+<tr>
+<td class=""><b>样本残差（= 泄漏）</b></td>
+<td class="num"><b>9.996580e-01</b></td>
+</tr>
+</tbody></table>
+<figure><img src="SHKit方法总结_figs/fig12_yangtze_map.png" alt="同一个 L=12：正确的投影只给出 ~3.5e−4 的团，CG 却把整块抬到 ≈1"><figcaption><b>图12</b> <b>看图什么</b>：左为输入的 142846 个点（长江河网形状清晰可见），中为projection 重建，右为 cg 重建。注意中右两幅<b>色标量级不同</b>（中 ~3e−4，右 ~1）。<b>证明了什么</b>：正确的投影诚实地显示出 L=12 只能把“1”摊成一个 1670 km 的团，峰值仅 3.4555e-04；而 cg 把整块区域抬到 1.000（框内均值），看起来“对了”，代价是 C<sub>00</sub> 错 11,491 倍。两套重建在测点上的图样相关只有 0.0007。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/fig13_shannon_sweep.png" alt="峰值紧贴 Shannon 数，掩膜要立起来需 L≈694"><figcaption><b>图13</b> <b>看图什么</b>：左为 Shannon 数与实测峰值随 L 的变化（双对数）；右为两者之比。<b>证明了什么</b>：实测峰值与 Shannon 数是同一条线（比值 0.989 → 0.451），所以“截断掩膜的幅度上界 = Shannon 数”是可以直接用来判断“这个阶数够不够”的硬指标。L=12 时该上界只有 3.495e-04，与“1”差了三个多数量级。</figcaption></figure>
+<table class="">
+<thead><tr>
+<th class="">L</th>
+<th class="num">Shannon 数</th>
+<th class="num">实测峰值</th>
+<th class="num">峰值/Shannon</th>
+<th class="num">半波长 (km)</th>
+<th class="num">样本残差</th>
+<th class="num">用时 (s)</th>
+</tr></thead><tbody>
+<tr>
+<td class="">12</td>
+<td class="num">3.4950e-04</td>
+<td class="num">3.4555e-04</td>
+<td class="num">0.9887</td>
+<td class="num">1,670</td>
+<td class="num">9.9966e-01</td>
+<td class="num">0.9</td>
+</tr>
+<tr>
+<td class="">30</td>
+<td class="num">1.9874e-03</td>
+<td class="num">1.8636e-03</td>
+<td class="num">0.9377</td>
+<td class="num">668</td>
+<td class="num">9.9824e-01</td>
+<td class="num">4.6</td>
+</tr>
+<tr>
+<td class="">60</td>
+<td class="num">7.6951e-03</td>
+<td class="num">6.0447e-03</td>
+<td class="num">0.7855</td>
+<td class="num">334</td>
+<td class="num">9.9494e-01</td>
+<td class="num">16.7</td>
+</tr>
+<tr>
+<td class="">120</td>
+<td class="num">3.0278e-02</td>
+<td class="num">1.3661e-02</td>
+<td class="num">0.4512</td>
+<td class="num">167</td>
+<td class="num">9.8943e-01</td>
+<td class="num">65.1</td>
+</tr>
+</tbody></table>
+
+<h3>9.4 迭代把残差压到零，同时把 C<sub>00</sub> 推离真值</h3>
+<p>见 4.5 的表与图5。核心结论：<b>残差与物理误差严格反相关</b>。</p>
+
+<h3>9.5 存储文件的两种状态</h3>
+<div class="warn"><b>重要说明</b>：<code>SHKit/yantze_shkit_coeffs.gfc</code>
+在本轮工作期间已被重新生成（mtime 2026-09-12 17:55:55），
+<b>当前内容是 <code>method=projection</code> + <code>weight_rule=delaunay</code></b>，
+不再是原始的 CG 解。因此下面两行分别给出：</div>
+<table class="">
+<thead><tr>
+<th class="">状态</th>
+<th class="">method</th>
+<th class="">积分元</th>
+<th class="num">C<sub>00</sub></th>
+<th class="num">相对 lattice 几何值</th>
+<th class="num">样本残差</th>
+<th class="num">触发 C<sub>00</sub> 守卫？</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><b>当前文件</b>（读取原文件）</td>
+<td class="">projection</td>
+<td class=""><code>delaunay</code></td>
+<td class="num">1.4472943080e-04</td>
+<td class="num">69.98×</td>
+<td class="num">—</td>
+<td class="num"><b>不触发</b>（与自身 Σw/4π 比值 1.000000）</td>
+</tr>
+<tr>
+<td class=""><b>原始文件</b>（本机用同配置复现）</td>
+<td class="">cg</td>
+<td class=""><code>delaunay</code></td>
+<td class="num">2.3814443053e-02</td>
+<td class="num">11,515.6×</td>
+<td class="num">7.307e-06</td>
+<td class="num"><b>触发</b>（True）</td>
+</tr>
+</tbody></table>
+<p>复现原始文件的方式（命令行）：</p>
+<pre>shkit analyze --points Yangtze_River.txt --nmax 12 --method cg --rule delaunay</pre>
+<p>得到 C<sub>00</sub> = 2.38144430534445797e-02、样本残差 = 7.3066721933582713e-06、
+<code>cg_info = [0]</code>，与原始文件内容逐位一致。
+它错在同时踩了三个已记录在案的坑：<code>method=cg</code>（未正则化最小二乘）、
+<code>reg=None</code>、<code>rule=delaunay</code>（凸包面积）。
+而 <code>docs/方案调研.md</code> 自己就测出“区域未正则化 WLSQ 不可用
+（30° 球冠系数相对误差 74×）”——本机在同一配置下复现到
+146.4，条件数 5.52e+16。</p>
+
+<h3>9.6 GUI 对照：两种方法跑同一份数据</h3>
+<figure><img src="SHKit方法总结_figs/gui_07_yangtze_projection_spectrum.png" alt="长江散点的逐阶谱（projection）"><figcaption><b>截图6</b> <b>看什么</b>：重建（球谐解）的逐阶振幅曲线。注意这里<b>没有</b>真实场曲线。<b>说明什么</b>：长江散点没有已知真值，所以逐阶谱只能给出重建一条线——这正是本文档要强调的一点：对没有真值的数据不应该画出真实场曲线，而旧版 GUI 会因为残留状态错误地把它画上去。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_06_yangtze_projection_report.png" alt="长江散点 + projection + lattice 的诊断报告（正确路径）"><figcaption><b>截图5</b> <b>看什么</b>：估计方法 = projection，积分元规则 = lattice，C<sub>00</sub> = 2.068019e-06，拟合残差 = 0.999658，面积加权残差 = 0.999658。<b>说明什么</b>：警告里有覆盖度、完备性、Shannon 三条，但<b>没有 C<sub>00</sub> 不一致告警</b>（<code>warn_c00 = False</code>），说明这个解与数据的加权均值自洽。残差接近 1 是<b>正常且诚实</b>的：它就是截断泄漏。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_09_yangtze_cg_report.png" alt="长江散点 + cg 的诊断报告（错误路径，守卫触发）"><figcaption><b>截图6</b> <b>看什么</b>：估计方法 = cg，C<sub>00</sub> = 2.376430e-02，拟合残差 = 7.162e-06（塌陷），警告里出现两条新告警：<b>C<sub>00</sub> 与数据加权均值不一致</b>，以及<b>样本残差塌陷</b>。<b>说明什么</b>：同一份数据、同一个阶数，只换估计方法，残差从 0.9997 掉到 7.2e-06，而 C<sub>00</sub> 从正确的 2.068e-06 变成 2.376e-02。守卫把这种情形明确标了出来——这正是本轮新增守卫要解决的问题。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_10_yangtze_cg_map.png" alt="cg 结果的地图视图（对照）"><figcaption><b>截图8</b> <b>看什么</b>：与截图7同一份数据的 cg 重建场。<b>说明什么</b>：cg 的重建在整个外接矩形里几乎是常数约 1，看上去像把区域填满了，而它并没有分辨出任何河网形状——低幅度真解的缺席被高 C00 掩盖了。</figcaption></figure>
+<figure><img src="SHKit方法总结_figs/gui_08_yangtze_projection_map.png" alt="projection 结果的地图视图"><figcaption><b>截图7</b> <b>看什么</b>：散点图/重建场/差值三种视图。<b>说明什么</b>：projection 的重建场在该分辨率下是一片低幅度平滑场，这是诚实的表现——它没有假装自己还原了河网。</figcaption></figure>
+</section><section id="s10">
+<h2>10. 方法选择速查表</h2>
+<table class="">
+<thead><tr>
+<th class="">你的情况</th>
+<th class="">推荐方法</th>
+<th class="num">积分元规则</th>
+<th class="num">不该用什么</th>
+<th class="num">理由（实测）</th>
+</tr></thead><tbody>
+<tr>
+<td class="">全球规则网格</td>
+<td class=""><code>quadrature</code>（<code>auto</code> 会自动选）</td>
+<td class="num"><code>dh</code></td>
+<td class="num">—</td>
+<td class="num">max|K−I| = 2.44e-15，求积即精确投影</td>
+</tr>
+<tr>
+<td class="">全球准均匀散点</td>
+<td class=""><code>quadrature</code>，想更准加 1–3 次迭代</td>
+<td class="num"><code>voronoi</code></td>
+<td class="num">把 niter 开到收敛</td>
+<td class="num">max|K−I| = 1.47e-03；迭代实测 6.344e-04 → 2.805e-10</td>
+</tr>
+<tr>
+<td class="">全球但采样很不规则</td>
+<td class=""><code>wlsq</code> + <code>reg='kaula'</code></td>
+<td class="num"><code>voronoi</code></td>
+<td class="num">无正则化的 wlsq/cg</td>
+<td class="num">max|K−I| = 6.05e-02 / 1.26e-01，需最小二乘</td>
+</tr>
+<tr>
+<td class="">区域网格（完整矩形）</td>
+<td class=""><code>projection</code> 或 <code>slepian</code></td>
+<td class="num"><code>grid</code></td>
+<td class="num">区域 Voronoi</td>
+<td class="num">Voronoi 虚高 14.93 倍</td>
+</tr>
+<tr>
+<td class="">区域散点（不规则）</td>
+<td class=""><code>projection</code>；要目标 B 用 <code>slepian</code></td>
+<td class="num"><code>delaunay</code></td>
+<td class="num">区域 Voronoi；未正则化 wlsq</td>
+<td class="num">delaunay 覆盖度偏小 7.0%（可接受）</td>
+</tr>
+<tr>
+<td class="">规则格网上的掩膜</td>
+<td class=""><code>projection</code>（<code>auto</code> 已自动路由）</td>
+<td class="num"><code>lattice</code></td>
+<td class="num"><code>grid</code>（偏大 4.59%）、<code>delaunay</code>（偏大 70 倍）</td>
+<td class="num">只有 lattice 与逐点格元参考一致（相对差 2e-15）</td>
+</tr>
+<tr>
+<td class="">0/1 指示场，想看泄漏</td>
+<td class=""><code>projection</code>（τ 留空）</td>
+<td class="num"><code>lattice</code>/<code>dh</code></td>
+<td class="num">任何把样本残差压到 0 的方法</td>
+<td class="num">投影的残差就是泄漏；迭代会把它变成假象</td>
+</tr>
+<tr>
+<td class="">要区域反演低阶全球场</td>
+<td class="">remove–restore；或 <code>slepian</code></td>
+<td class="num"><code>delaunay</code>/<code>grid</code></td>
+<td class="num">直接用区域数据反演</td>
+<td class="num">小区域 λ<sub>max</sub> 仅 0.638（<0.5），信息论上不成立</td>
+</tr>
+</tbody></table>
+</section><section id="s11">
+<h2>11. 优缺点与适用场景汇总</h2>
+<h3><code>quadrature</code> / <code>projection</code>（零填充全球投影）</h3>
+<p><b>优点</b>：目标函数定义在整个球面上，因此样本残差<b>就是截断泄漏</b>；C<sub>00</sub> 精确
+等于面积占比；不做反演，没有近零空间放大；计算最便宜。</p>
+<p><b>缺点/边界</b>：不能修采样偏差（需靠 τ 或换权重规则）；不给出“区域内最优拟合”，
+所以区域内的拟合看起来“很差”——但那是真的。</p>
+<p><b>什么时候会骗你</b>：几乎不会骗；它的问题是被误读——把 0.99 的残差当成“方法失败”。
+真正的失败是换个方法把残差压到 1e-6。</p>
+
+<h3><code>iterative</code>（Richardson 校正）</h3>
+<p><b>优点</b>：准均匀采样下极便宜地逼近最小二乘（实测
+6.344e-04 → 2.784e-06）。</p>
+<p><b>缺点/边界</b>：niter 必须小；不动点是 WLSQ 解，所以在 K 远离 I 的数据上
+它会一路上滑到错误解。</p>
+<p><b>什么时候会骗你</b>：区域数据上它每一步都在降残差，<b>看起来在改进</b>，
+而 C<sub>00</sub> 同时单调膨胀（niter 0→25 从 1.0× 到 25.9×）。</p>
+
+<h3><code>wlsq</code> / <code>cg</code>（逐点加权最小二乘）</h3>
+<p><b>优点</b>：全球覆盖但采样不规则时的正解；配合超定比 ≥ 4 与正则化很稳。</p>
+<p><b>缺点/边界</b>：目标函数求和域只有测点，对“隐含 0"结构性失明；对 W 整体缩放不变，
+因此原则上无法约束 C<sub>00</sub>。</p>
+<p><b>什么时候会骗你</b>：区域数据上未正则化时——<code>cg_info=0</code>（报告成功收敛）、
+残差 7.3e-06、而 C<sub>00</sub> 错 11,516 倍。
+<b>它不会报错，只会给一个自洽但物理上不可能的解。</b></p>
+
+<h3><code>reg='tikhonov'</code></h3>
+<p><b>优点</b>：实现简单，先验明确（最小范数）。</p>
+<p><b>缺点</b>：在零空间极大的区域问题上几乎不起作用——长江上 α 到 1e-4 仍停在
+2.376e-02；
+30° 球冠上加 α=1e-9 后系数相对误差仍 12.572。</p>
+
+<h3><code>reg='kaula'</code></h3>
+<p><b>优点</b>：量纲无关（谱先验由数据自估），对区域数据<b>有效</b>：长江 C<sub>00</sub> 拉回
+3.432e-07（隐含
+175 km²）。</p>
+<p><b>缺点/边界</b>：先验本身取自一次求积的逐阶振幅，覆盖不全或有噪声时先验会被污染；
+α 仍需人工判断。</p>
+
+<h3><code>slepian</code></h3>
+<p><b>优点</b>：区域数据的正解——把病态显式化（λ 就是集中因子），
+条件数与区域外场量都低几个数量级（1.51 /
+4.02e-02 vs 3.29e+12 /
+8.9）。</p>
+<p><b>缺点/边界</b>：区域内拟合“一般”（它放弃了不可确定的方向）；
+小区域连低阶场都恢复不了，必须 remove–restore。</p>
+
+<h3>积分元规则</h3>
+<p><b><code>lattice</code></b>：格点数据上唯一正确；<code>grid</code> 只在<b>完整</b>网格上正确；
+<code>delaunay</code> 拿凸包面积，对河网状掩膜虚高 ~70 倍；
+<b><code>voronoi</code> 对任何区域子集都绝对错误</b>（恒为 4π）。</p>
+</section><section id="s12">
+<h2>12. 复现</h2>
+<h3>12.1 本文档的全部数值与图</h3>
+<pre>cd SHKit
+python docs/_summary_measure.py     # 计算全部数值 -> _measurements.json / _data.npz
+python docs/_summary_history.py     # 字体检查 + .gfc 两种状态
+python docs/_summary_figs.py        # 16 张图 -> SHKit方法总结_figs/
+python docs/_summary_shots.py       # 10 张 GUI 截图（离屏 Qt + SimHei）
+python docs/_summary_html.py        # 生成本文件</pre>
+<h3>12.2 关键结论对应的命令</h3>
+<pre># 长江掩膜：正确路径（auto 会选 lattice + projection；C00 = 2.068e-06）
+shkit analyze --points Yangtze_River.txt --nmax 12 --method projection
+
+# 长江掩膜：错误路径（复现原始 .gfc 的内容）
+shkit analyze --points Yangtze_River.txt --nmax 12 --method cg --rule delaunay
+
+# 原始工具链（逐点格元权重，写 examples/）
+python tools/yangtze_points_to_sh.py --lmax 60
+
+# 新回归套件（28 项，含与逐点格元参考 CSV 的交叉校验）
+python tests/validate_projection.py
+python tests/run_all.py</pre>
+<h3>12.3 仓库产物</h3>
+<table class="">
+<thead><tr>
+<th class="">文件</th>
+<th class="num">内容</th>
+</tr></thead><tbody>
+<tr>
+<td class=""><code>docs/SHKit方法总结.html</code></td>
+<td class="num">本文档</td>
+</tr>
+<tr>
+<td class=""><code>docs/SHKit方法总结_figs/</code></td>
+<td class="num">16 张方法/试验图 + 10 张 GUI 截图 + 测量 JSON（本目录当前共 27 个 PNG）</td>
+</tr>
+<tr>
+<td class=""><code>docs/方案调研.md</code></td>
+<td class="num">方法调研原始记录（含区域 WLSQ 失效、Slepian 实测等）</td>
+</tr>
+<tr>
+<td class=""><code>examples/README_yangtze.md</code></td>
+<td class="num">长江数据说明 + 三种积分元口径对照表</td>
+</tr>
+<tr>
+<td class=""><code>tools/yangtze_points_to_sh.py</code></td>
+<td class="num">长江散点 → 球谐系数（逐点格元权重）</td>
+</tr>
+<tr>
+<td class=""><code>examples/yangtze_mask_n60.sh</code> / <code>.npz</code></td>
+<td class="num">该工具产出的 nmax=60 掩膜系数</td>
+</tr>
+<tr>
+<td class=""><code>examples/yangtze_points_weights.csv</code></td>
+<td class="num">142846 行逐点积分元（本文档的参考基准）</td>
+</tr>
+<tr>
+<td class=""><code>tests/validate_projection.py</code></td>
+<td class="num">零填充全球投影 + C00 守卫的回归套件（28 项）</td>
+</tr>
+</tbody></table>
+</section><section id="s13">
+<h2>13. 已知限制</h2>
+<ol>
+<li><b>命名问题（未改）</b>：新规则名 <code>lattice</code> 与
+<code>shkit/cli.py</code> 里已有的 "Fibonacci lattice"（指全球准均匀点列，
+<code>fib_sphere()</code> 的 docstring）<b>撞名</b>，且与 <code>grid</code> 在英文里近乎同义。
+二者靠名字本身区分不出“完整 vs 有洞”。候选改名 <code>subgrid</code>
+（与 <code>grid</code> 的关系一目了然，不引入新术语）。本轮未改，以免动到已发布的规则名。</li>
+<li><b><code>SHCoeffs.degree_rms()</code> 在 n=0 处偏小 √2 倍（既有行为，未改）</b>：
+它对 n=0 也是 <code>mean([C00², S00²])</code>，而 S<sub>00</sub> 结构上恒为 0，
+所以返回的是 |C<sub>00</sub>|/√2。本文档 9.3 的逐阶谱表沿用该既有行为
+（n=0 行 = 1.462310e-06，而 C<sub>00</sub> = 2.068019e-06，
+比值为 0.707107 ≈ 1/√2）。
+<b>其余各阶不受影响。</b>修它会改变所有导出谱与既有测试基线，故未在本次范围内改动。</li>
+<li><b>C<sub>00</sub> 守卫抓不到口径错误</b>：它检查的是求解器产出的 C<sub>00</sub> 与
+Σwf/4π 是否一致。若积分元本身选错（如 delaunay 凸包面积），解仍然自洽，
+守卫不响。9.2 的表就是这种情形（四套口径全部“自洽”）。</li>
+<li><b>τ 校正需要构造 K</b>：<code>projection(tau=...)</code> 需要完整设计矩阵，
+内存约 O(N·ncoef)；长江（142846 × 169）约 193 MB，可接受，但更大的问题要小心。</li>
+<li><b>读取 <code>.gfc</code> 的头部元数据不落到 <code>coeffs.meta</code> 顶层</b>：
+方法/积分元等写在 <code>meta['gfc_header']</code> 里（键值为字符串），
+需要 <code>c.meta['gfc_header']['method']</code> 才能取到。
+本文档 9.5 即按此读取。</li>
+<li><b>netCDF 无法在本机共享盘上写入</b>：<code>netCDF4</code> 在
+<code>华为家庭存储</code>（SMB）上对<b>任何</b>路径 <code>to_netcdf()</code> 都报
+<code>PermissionError</code>；本机临时目录正常。因此
+<code>tests/run_all.py</code> 中 3 项 <code>.nc</code> 相关检查失败
+（<code>grid nc round trip</code>、<code>synth</code> 写 <code>recon.nc</code>、
+<code>glq-grid</code> 写 <code>glq.nc</code>），与本轮改动无关。
+<code>.grd</code>/<code>.csv</code> 往返均通过。故本文档所有产物只用 PNG/CSV/JSON。</li>
+<li><b>区域低阶反演在信息论上不成立</b>：这不是软件限制而是数学事实
+（4.7 的小球冠表）。任何声称“用区域数据反演出低阶全球场”的结果都需要先做
+remove–restore，否则不可信。</li>
+<li><b>本轮未覆盖</b>：FFT/局部球谐等更快的高阶路径；多时次数据上的 C<sub>00</sub> 守卫
+只对第 0 个时次给出标量判定（其余时次在
+<code>meta['dc_mean_expected_all']</code> 里）。</li>
+</ol>
+</section></main></div><footer>SHKit 方法总结 · 全部数值由本机实时计算（docs/_summary_measure.py） · 无外部依赖，可离线打开</footer></body></html>
