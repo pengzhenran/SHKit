@@ -576,10 +576,11 @@ conda install -n shkit-gui -y -c conda-forge libffi             # _ctypes 需要
 
 cd SHKit
 powershell -ExecutionPolicy Bypass -File packaging\build_installer.ps1 -VerifyInstall
-# → D:\SHKit_build\dist\SHKit_Setup_v2.0.1.exe  （92 MB，装完即用，不需要 Python）
+# → D:\SHKit_build\dist\SHKit_Setup_v2.0.1.exe  （89.4 MB，装完即用，不需要 Python）
 ```
 
-> **实测**（2026-09-13）：目录包 317 MB / 1318 个文件、`SHKit.exe` 17.1 MB、安装程序 **92 MB**；
+> **实测**（2026-09-21，Python 3.12 + PySide6-Essentials）：目录包 307.7 MB / 1256 个文件、
+> `SHKit.exe` 17.2 MB、安装程序 **89.4 MB**；
 > `-VerifyInstall` 静默装到临时目录 → 文件核对全 OK → 装完的 exe 启动正常且 `--self-test` 9/9 →
 > 自动卸载清理，脚本退出码 0。两个**必须自己补的前提**（细节见 BUILD_ENV.md §6）：
 > ① Inno 自带语言包**没有简体中文**，要另放 `ChineseSimplified.isl` 到 `<Inno Setup>\Languages\`；
