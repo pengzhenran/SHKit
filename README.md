@@ -23,6 +23,7 @@ SHKit 是一个球谐（Spherical Harmonic, SH）分析 / 综合工具包，解�
 > 不写代码也可以直接用：打包好的 Windows 桌面版（装完即用，不需要 Python）见
 > **[Releases](https://github.com/pengzhenran/SHKit/releases/latest)**，
 > 最新版 `SHKit_Setup_v2.0.1.exe`。
+> 国内下载较慢也可以用夸克网盘：<https://pan.quark.cn/s/5b31598737f5>（二维码见文末）。
 
 ---
 
@@ -630,4 +631,4 @@ SHKit 自身代码：**MIT**。
 | 课题组公众号「地球重力与人类生活（TVGG）」 | 夸克网盘（Windows 安装包，国内下载更快） |
 | :---: | :---: |
 | <img src="docs/qr-tvgg.jpg" width="200" alt="课题组公众号二维码"> | <img src="docs/qr-quark.png" width="200" alt="夸克网盘二维码"> |
-| 扫码关注，获取工具与更新 | 扫码打开网盘分享（`SHKit_Setup_v2.0.1.exe`） |
+| 扫码关注，获取工具与更新 | 扫码打开网盘分享（`SHKit_Setup_v2.0.1.exe`，<https://pan.quark.cn/s/5b31598737f5>） |
